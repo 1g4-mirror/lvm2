@@ -182,6 +182,9 @@ Overrides report/aligned configuration setting.
 .B --binary
 Overrides report/binary_values_as_numeric configuration setting.
 .TP
+.B --idsinheadings
+Show column identifiers instead of names in report output headings.
+.TP
 .B --nameprefixes
 Overrides report/prefixes configuration setting.
 .TP
@@ -1297,6 +1300,27 @@ binary_values_as_numeric=1
   LV    LSize Cpy%Sync ActLocal
   lvol1 4.00m 100.00            1
   lvol0 4.00m                   1
+.fi
+.P
+In certain cases, you may find it more useful to report column identifiers
+instead of column names in report headings. To do this, use
+\fBreport/ids_in_headings=1\fP configuration setting (or
+\fB--idsinheadings\fP command line option).
+The column identifiers are the exact identifiers that you also use in
+\fIFieldSet\fP for \fB-o|--options\fP. These identifiers are unambiguous,
+without spaces (one word) and they also make it easier to match the output
+with requested \fIFieldSet\fP:
+.P
+.nf
+# lvs -o+seg_start,seg_start_pe
+  LV    VG LSize Cpy%Sync Start Start
+  lvol0 vg 4.00m             0      0
+  lvol1 vg 4.00m 100.00      0      0
+
+# lvs --idsinheadings -o+seg_start,seg_start_pe
+  lv_name vg_name lv_size copy_percent seg_start seg_start_pe
+  lvol0   vg        4.00m                     0             0
+  lvol1   vg        4.00m 100.00              0             0
 .fi
 .
 .SS Changing output format
