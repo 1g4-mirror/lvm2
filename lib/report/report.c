@@ -4439,8 +4439,11 @@ void *report_init(struct cmd_context *cmd, const char *format, const char *keys,
 	if (buffered)
 		report_flags |= DM_REPORT_OUTPUT_BUFFERED;
 
-	if (headings)
+	if (headings) {
 		report_flags |= DM_REPORT_OUTPUT_HEADINGS;
+		if (headings == 2)
+			report_flags |= DM_REPORT_OUTPUT_FIELD_IDS_IN_HEADINGS;
+	}
 
 	if (field_prefixes)
 		report_flags |= DM_REPORT_OUTPUT_FIELD_NAME_PREFIX;

@@ -50,7 +50,7 @@ struct report_args {
 	report_type_t report_type;
 	int aligned;
 	int buffered;
-	int headings;
+	int headings; /* 0 - disabled, 1 - abbreviations, 2 - full column names */
 	int field_prefixes;
 	int quoted;
 	int columns_as_rows;
@@ -1247,9 +1247,11 @@ out:
 
 static int _config_report(struct cmd_context *cmd, struct report_args *args, struct single_report_args *single_args)
 {
+	const char *str;
+
 	args->aligned = find_config_tree_bool(cmd, report_aligned_CFG, NULL);
 	args->buffered = find_config_tree_bool(cmd, report_buffered_CFG, NULL);
-	args->headings = find_config_tree_bool(cmd, report_headings_CFG, NULL);
+	args->headings = find_config_tree_int(cmd, report_headings_CFG, NULL);
 	args->separator = find_config_tree_str(cmd, report_separator_CFG, NULL);
 	args->field_prefixes = find_config_tree_bool(cmd, report_prefixes_CFG, NULL);
 	args->quoted = find_config_tree_bool(cmd, report_quoted_CFG, NULL);
@@ -1345,6 +1347,18 @@ static int _config_report(struct cmd_context *cmd, struct report_args *args, str
 		args->buffered = 0;
 	if (arg_is_set(cmd, noheadings_ARG))
 		args->headings = 0;
+	if ((str = arg_str_value(cmd, headings_ARG, NULL))) {
+		if (!strcmp(str, "none") || !strcmp(str, "0"))
+			args->headings = 0;
+		else if (!strcmp(str, "abbrev") || !strcmp(str, "1"))
+			args->headings = 1;
+		else if (!strcmp(str, "full") || !strcmp(str, "2"))
+			args->headings = 2;
+		else {
+			log_error("Unknown --headings value.");
+			return 0;
+		}
+	}
 	if (arg_is_set(cmd, nameprefixes_ARG)) {
 		args->aligned = 0;
 		args->field_prefixes = 1;
