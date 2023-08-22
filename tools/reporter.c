@@ -51,6 +51,7 @@ struct report_args {
 	int aligned;
 	int buffered;
 	int headings;
+	int field_ids_in_headings;
 	int field_prefixes;
 	int quoted;
 	int columns_as_rows;
@@ -1075,7 +1076,8 @@ static int _do_report(struct cmd_context *cmd, struct processing_handle *handle,
 
 	if (!(report_handle = report_init(cmd, single_args->options, single_args->keys, &report_type,
 					  args->separator, args->aligned, args->buffered,
-					  args->headings, args->field_prefixes, args->quoted,
+					  args->headings, args->field_ids_in_headings,
+					  args->field_prefixes, args->quoted,
 					  args->columns_as_rows, single_args->selection, 0)))
 		goto_out;
 
@@ -1251,6 +1253,7 @@ static int _config_report(struct cmd_context *cmd, struct report_args *args, str
 	args->buffered = find_config_tree_bool(cmd, report_buffered_CFG, NULL);
 	args->headings = find_config_tree_bool(cmd, report_headings_CFG, NULL);
 	args->separator = find_config_tree_str(cmd, report_separator_CFG, NULL);
+	args->field_ids_in_headings = find_config_tree_bool(cmd, report_ids_in_headings_CFG, NULL);
 	args->field_prefixes = find_config_tree_bool(cmd, report_prefixes_CFG, NULL);
 	args->quoted = find_config_tree_bool(cmd, report_quoted_CFG, NULL);
 	args->columns_as_rows = find_config_tree_bool(cmd, report_columns_as_rows_CFG, NULL);
@@ -1345,6 +1348,8 @@ static int _config_report(struct cmd_context *cmd, struct report_args *args, str
 		args->buffered = 0;
 	if (arg_is_set(cmd, noheadings_ARG))
 		args->headings = 0;
+	if (arg_is_set(cmd, idsinheadings_ARG))
+		args->field_ids_in_headings = 1;
 	if (arg_is_set(cmd, nameprefixes_ARG)) {
 		args->aligned = 0;
 		args->field_prefixes = 1;
@@ -1519,7 +1524,8 @@ int report_format_init(struct cmd_context *cmd)
 
 		if (!(tmp_log_rh = report_init(NULL, single_args->options, single_args->keys, &single_args->report_type,
 						  args.separator, args.aligned, args.buffered, args.headings,
-						  args.field_prefixes, args.quoted, args.columns_as_rows,
+						  args.field_ids_in_headings, args.field_prefixes,
+						  args.quoted, args.columns_as_rows,
 						  single_args->selection, 1))) {
 			log_error("Failed to create log report.");
 			goto bad;

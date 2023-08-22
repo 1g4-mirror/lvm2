@@ -1,5 +1,6 @@
 version 2.03.23 - 
 ==================================
+  Add report/ids_in_headings lvm.conf and --idsinheadings command line option.
   Require writable LV for convertion to vdo pool.
   Fix return value from lvconvert integrity remove.
   Preserve UUID for pool metadata spare.

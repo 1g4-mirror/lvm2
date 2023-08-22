@@ -1866,6 +1866,9 @@ cfg(report_buffered_CFG, "buffered", report_CFG_SECTION, CFG_PROFILABLE | CFG_DE
 cfg(report_headings_CFG, "headings", report_CFG_SECTION, CFG_PROFILABLE | CFG_DEFAULT_COMMENTED, CFG_TYPE_BOOL, DEFAULT_REP_HEADINGS, vsn(1, 0, 0), NULL, 0, NULL,
 	"Show headings for columns on report.\n")
 
+cfg(report_ids_in_headings_CFG, "ids_in_headings", report_CFG_SECTION, CFG_PROFILABLE | CFG_DEFAULT_COMMENTED, CFG_TYPE_BOOL, DEFAULT_REP_IDS_IN_HEADINGS, vsn(2, 3, 23), NULL, 0, NULL,
+	"Show column identifiers instead of names in report output headings.\n")
+
 cfg(report_separator_CFG, "separator", report_CFG_SECTION, CFG_PROFILABLE | CFG_DEFAULT_COMMENTED, CFG_TYPE_STRING, DEFAULT_REP_SEPARATOR, vsn(1, 0, 0), NULL, 0, NULL,
 	"A separator to use on report after each field.\n")
 

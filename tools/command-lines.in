@@ -211,7 +211,7 @@ OO_ALL: --commandprofile String, --config String, --debug,
 #
 OO_REPORT: --aligned, --all, --binary, --configreport ConfigReport, --foreign,
 --ignorelockingfailure, --logonly,
---nameprefixes, --noheadings, --nosuffix,
+--nameprefixes, --idsinheadings, --noheadings, --nosuffix,
 --options String, --readonly, --reportformat ReportFmt, --rows,
 --select String, --separator String, --shared, --sort String,
 --unbuffered, --units Units, --unquoted

@@ -522,6 +522,9 @@ arg(nameprefixes_ARG, '\0', "nameprefixes", 0, 0, 0,
     "with --noheadings to produce a list of field=value pairs that can\n"
     "be used to set environment variables (for example, in udev rules).\n")
 
+arg(idsinheadings_ARG, '\0', "idsinheadings", 0, 0, 0,
+    "Show column identifiers instead of names in report output headings.\n")
+
 arg(noheadings_ARG, '\0', "noheadings", 0, 0, 0,
     "Suppress the headings line that is normally the first line of output.\n"
     "Useful if grepping the output.\n")
