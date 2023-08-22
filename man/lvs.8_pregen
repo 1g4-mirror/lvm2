@@ -49,6 +49,8 @@ lvs produces formatted output about LVs.
 .br
 [    \fB--nameprefixes\fP ]
 .br
+[    \fB--idsinheadings\fP ]
+.br
 [    \fB--noheadings\fP ]
 .br
 [    \fB--nosuffix\fP ]
@@ -209,6 +211,11 @@ Display help text.
 Include historical LVs in the output.
 (This has no effect unless LVs were removed while
 \fBlvm.conf\fP(5) \fBmetadata/record_lvs_history\fP was enabled.
+.
+.HP
+\fB--idsinheadings\fP
+.br
+Show column identifiers instead of names in report output headings.
 .
 .HP
 \fB--ignorelockingfailure\fP

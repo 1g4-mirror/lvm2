@@ -2021,6 +2021,11 @@ activation {
 	# This configuration option has an automatic default value.
 	# headings = 1
 
+	# Configuration option report/ids_in_headings.
+	# Show column identifiers instead of names in report output headings.
+	# This configuration option has an automatic default value.
+	# ids_in_headings = 0
+
 	# Configuration option report/separator.
 	# A separator to use on report after each field.
 	# This configuration option has an automatic default value.

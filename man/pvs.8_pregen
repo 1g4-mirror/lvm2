@@ -47,6 +47,8 @@ pvs produces formatted output about PVs.
 .br
 [    \fB--nameprefixes\fP ]
 .br
+[    \fB--idsinheadings\fP ]
+.br
 [    \fB--noheadings\fP ]
 .br
 [    \fB--nosuffix\fP ]
@@ -199,6 +201,11 @@ See \fBlvmsystemid\fP(7) for more information about foreign VGs.
 \fB-h\fP|\fB--help\fP
 .br
 Display help text.
+.
+.HP
+\fB--idsinheadings\fP
+.br
+Show column identifiers instead of names in report output headings.
 .
 .HP
 \fB--ignorelockingfailure\fP
