@@ -1136,6 +1136,18 @@ int dumptype_arg(struct cmd_context *cmd, struct arg_values *av)
 	return 0;
 }
 
+int headings_arg(struct cmd_context *cmd, struct arg_values *av)
+{
+	if (!strcmp(av->value, "none") ||
+	    !strcmp(av->value, "abbrev") ||
+	    !strcmp(av->value, "full") ||
+	    !strcmp(av->value, "0") ||
+	    !strcmp(av->value, "1") ||
+	    !strcmp(av->value, "2"))
+		return 1;
+	return 0;
+}
+
 /*
  * FIXME: there's been a confusing mixup among:
  * resizeable, resizable, allocatable, allocation.
