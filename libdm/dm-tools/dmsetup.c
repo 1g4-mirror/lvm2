@@ -180,6 +180,7 @@ enum {
 	GROUP_ID_ARG,
 	HELP_ARG,
 	HISTOGRAM_ARG,
+	IDSINHEADINGS_ARG,
 	INACTIVE_ARG,
 	INTERVAL_ARG,
 	LENGTH_ARG,
@@ -4736,7 +4737,7 @@ static int _report_init(const struct command *cmd, const char *subcommand)
 	const char *separator = " ";
 	const char *selection = NULL;
 	int aligned = 1, headings = 1, buffered = 1, field_prefixes = 0;
-	int quoted = 1, columns_as_rows = 0;
+	int field_ids_in_headings = 0, quoted = 1, columns_as_rows = 0;
 	uint32_t flags = 0;
 	size_t len = 0;
 	int r = 0;
@@ -4790,6 +4791,9 @@ static int _report_init(const struct command *cmd, const char *subcommand)
 
 	if (_switches[UNQUOTED_ARG])
 		quoted = 0;
+
+	if (_switches[IDSINHEADINGS_ARG])
+		field_ids_in_headings = 1;
 
 	if (_switches[NAMEPREFIXES_ARG]) {
 		aligned = 0;
@@ -4850,6 +4854,9 @@ static int _report_init(const struct command *cmd, const char *subcommand)
 
 	if (headings)
 		flags |= DM_REPORT_OUTPUT_HEADINGS;
+
+	if (field_ids_in_headings)
+		flags |= DM_REPORT_OUTPUT_FIELD_IDS_IN_HEADINGS;
 
 	if (field_prefixes)
 		flags |= DM_REPORT_OUTPUT_FIELD_NAME_PREFIX;
@@ -6166,7 +6173,8 @@ static int _stats_help(CMD_ARGS);
  *       [--units <u>] [--programid <id>] [--regionid <id>]
  *       [-o <fields>] [-O|--sort <sort_fields>]
  *       [-S|--select <selection>] [--nameprefixes]
- *       [--noheadings] [--separator <separator>]
+ *       [--idsinheadings] [--noheadings]
+ *       [--separator <separator>]
  *       [--allprograms|--programid id] [<device>...]
  *   ungroup --groupid <id> [--allprograms|--programid id]
  *       [--alldevices|<device>...]
@@ -6336,8 +6344,8 @@ static void _dmsetup_usage(FILE *out)
 		"        [--udevcookie <cookie>] [--noudevrules] [--noudevsync] [--verifyudev]\n"
 		"        [-y|--yes] [--readahead {[+]<sectors>|auto|none}] [--retry]\n"
 		"        [-c|-C|--columns] [-o <fields>] [-O|--sort <sort_fields>]\n"
-		"        [-S|--select <selection>] [--nameprefixes] [--noheadings]\n"
-		"        [--separator <separator>]\n\n",
+		"        [-S|--select <selection>] [--nameprefixes] [--idsinheadings]\n"
+		"        [--noheadings] [--separator <separator>]\n\n",
 		_base_commands[_base_command].name);
 
 	for (i = 0; _dmsetup_commands[i].name; i++)
@@ -6868,6 +6876,7 @@ static int _process_switches(int *argcp, char ***argvp, const char *dev_dir)
 		{"groupid", 1, &ind, GROUP_ID_ARG},
 		{"help", 0, &ind, HELP_ARG},
 		{"histogram", 0, &ind, HISTOGRAM_ARG},
+		{"idsinheadings", 0, &ind, IDSINHEADINGS_ARG},
 		{"inactive", 0, &ind, INACTIVE_ARG},
 		{"interval", 1, &ind, INTERVAL_ARG},
 		{"length", 1, &ind, LENGTH_ARG},
@@ -7176,6 +7185,8 @@ static int _process_switches(int *argcp, char ***argvp, const char *dev_dir)
 		}
 		if (ind == SEGMENTS_ARG)
 			_switches[SEGMENTS_ARG]++;
+		if (ind == IDSINHEADINGS_ARG)
+			_switches[IDSINHEADINGS_ARG]++;
 		if (ind == INACTIVE_ARG)
 		       _switches[INACTIVE_ARG]++;
 		if (ind == INTERVAL_ARG) {
