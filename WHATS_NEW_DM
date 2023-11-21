@@ -1,5 +1,5 @@
-Version 1.02.197 - 21st
-=======================
+Version 1.02.198 - 
+===================
   Fix invalid JSON report if using DM_REPORT_OUTPUT_MULTIPLE_TIMES and selection.
   Propagate ioctl errno from dm_task_run when creating new table line.
   Add support for group aliases in dmstats.
@@ -1535,3 +1535,4 @@ Version 1.00.08 - 27 Feb 2004
   Fixed DESTDIR for make install/install_static_lib.
   Updated README/INSTALL to reflect move to sources.redhat.com.
   Updated autoconf files to 2003-06-17.
+
