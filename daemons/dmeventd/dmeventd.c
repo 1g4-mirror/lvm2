@@ -59,6 +59,7 @@
 #  define SD_LISTEN_FDS_START 3
 #  define SD_FD_FIFO_SERVER SD_LISTEN_FDS_START
 #  define SD_FD_FIFO_CLIENT (SD_LISTEN_FDS_START + 1)
+#  define SD_LISTEN_FDS_END (SD_LISTEN_FDS_START + 2)
 
 #endif
 
@@ -1944,14 +1945,37 @@ static void _remove_files_on_exit(void)
 	}
 }
 
+static void _close_fds(void)
+{
+	int fd;
+	int min_fd;
+	struct rlimit rlim;
+
+	min_fd = 3;
+#ifdef __linux__
+	if (_systemd_activation) {
+		/* Do not close fds preloaded by systemd! */
+		min_fd = SD_LISTEN_FDS_END;
+	}
+#endif
+
+	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0)
+		fd = 256;	/* just have to guess */
+	else
+		fd = rlim.rlim_cur;
+
+	for (--fd; fd >= min_fd; fd--) {
+		(void) close(fd);
+	}
+}
+
 static void _daemonize(void)
 {
 	int child_status;
-	int fd;
 	pid_t pid;
-	struct rlimit rlim;
 	struct timeval tval;
 	sigset_t my_sigset;
+	int null_fd;
 
 	sigemptyset(&my_sigset);
 	if (sigprocmask(SIG_SETMASK, &my_sigset, NULL) < 0) {
@@ -1995,26 +2019,24 @@ static void _daemonize(void)
 	if (chdir("/"))
 		exit(EXIT_CHDIR_FAILURE);
 
-	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0)
-		fd = 256;	/* just have to guess */
-	else
-		fd = rlim.rlim_cur;
+	_close_fds();
 
-	for (--fd; fd >= 0; fd--) {
-#ifdef __linux__
-		/* Do not close fds preloaded by systemd! */
-		if (_systemd_activation &&
-		    (fd == SD_FD_FIFO_SERVER || fd == SD_FD_FIFO_CLIENT))
-			continue;
-#endif
-		(void) close(fd);
+	if ((null_fd = open("/dev/null", O_RDWR)) == -1) {
+		log_sys_error("open", "/dev/null");
+		exit(EXIT_FAILURE);
 	}
 
-	/* coverity[leaked_handle] dont't care */
-	if ((open("/dev/null", O_RDONLY) < 0) ||
-	    (open("/dev/null", O_WRONLY) < 0) ||
-	    (open("/dev/null", O_WRONLY) < 0))
-		exit(EXIT_DESC_OPEN_FAILURE);
+	/* coverity[leaked_handle] don't care */
+	if ((dup2(null_fd, STDIN_FILENO) < 0)  || /* reopen stdin */
+	    (dup2(null_fd, STDOUT_FILENO) < 0) || /* reopen stdout */
+	    (dup2(null_fd, STDERR_FILENO) < 0)) { /* reopen stderr */
+		log_sys_error("dup2", "redirect");
+		(void) close(null_fd);
+		exit(EXIT_FAILURE);
+	}
+
+	if (null_fd > STDERR_FILENO)
+		(void) close(null_fd);
 
 	setsid();
 }
