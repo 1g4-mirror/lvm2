@@ -1959,6 +1959,13 @@ static void _close_fds(void)
 	}
 #endif
 
+#ifdef HAVE_CLOSE_RANGE
+	if (close_range(min_fd, ~0U, 0) == 0) {
+		return;
+	}
+	// fall back to loop
+#endif
+
 	if (getrlimit(RLIMIT_NOFILE, &rlim) < 0)
 		fd = 256;	/* just have to guess */
 	else
