@@ -436,7 +436,7 @@ DEFS+=-D_FILE_OFFSET_BITS=64
 	@echo "    [CC] $(<F)"
 	$(Q) $(CC) -c $(CFLAGS) $(CLDFLAGS) $< $(LIBS) -o $@
 
-ifneq (,$(LIB_SHARED))
+ifeq ("@SHARED_LINK@", "yes")
 
 TARGETS += $(LIB_SHARED).$(LIB_VERSION)
 $(LIB_SHARED).$(LIB_VERSION): $(OBJECTS) $(LDDEPS)
