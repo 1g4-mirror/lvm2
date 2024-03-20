@@ -1488,9 +1488,8 @@ int devtypes(struct cmd_context *cmd, int argc, char **argv)
 
 int report_format_init(struct cmd_context *cmd)
 {
-	int config_set = find_config_tree_node(cmd, report_output_format_CFG, NULL) != NULL;
 	const char *config_format_str = find_config_tree_str(cmd, report_output_format_CFG, NULL);
-	const char *format_str = arg_str_value(cmd, reportformat_ARG, config_set ? config_format_str : NULL);
+	const char *format_str = arg_str_value(cmd, reportformat_ARG, config_format_str);
 	int report_command_log_config_set = find_config_tree_node(cmd, log_report_command_log_CFG, NULL) != NULL;
 	int report_command_log;
 	struct report_args args = {0};
@@ -1501,7 +1500,7 @@ int report_format_init(struct cmd_context *cmd)
 	args.log_only = arg_is_set(cmd, logonly_ARG);
 	report_command_log = args.log_only || find_config_tree_bool(cmd, log_report_command_log_CFG, NULL);
 
-	if (!format_str || !strcmp(format_str, REPORT_FORMAT_NAME_BASIC)) {
+	if (!strcmp(format_str, REPORT_FORMAT_NAME_BASIC)) {
 		args.report_group_type = (report_command_log && !args.log_only) ? DM_REPORT_GROUP_BASIC
 										: DM_REPORT_GROUP_SINGLE;
 	} else if (!strcmp(format_str, REPORT_FORMAT_NAME_JSON)) {
