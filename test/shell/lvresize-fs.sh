@@ -649,5 +649,32 @@ df --output=size "$mount_dir" |tee df7
 not diff df6 df7
 umount "$mount_dir"
 
+lvremove -f $vg
+
+######################################
+#
+# lvreduce, lvextend with swap device
+#
+######################################
+
+lvcreate -n $lv -L 16M $vg
+mkswap /dev/$vg/$lv
+
+# lvreduce not allowed if LV size < swap size
+not lvreduce --fs checksize -L8m $vg/$lv
+check lv_field $vg/$lv lv_size "16.00m"
+
+# lvreduce not allowed if LV size < swap size,
+# even with --fs resize, this is not supported
+not lvreduce --fs resize $vg/$lv
+check lv_field $vg/$lv lv_size "16.00m"
+
+# lvextend allowed if LV size > swap size
+lvextend -L32m $vg/$lv
+check lv_field $vg/$lv lv_size "32.00m"
+
+# lvreduce allowed if LV size == swap size
+lvreduce -L16m $vg/$lv
+check lv_field $vg/$lv lv_size "16.00m"
 
 vgremove -ff $vg
