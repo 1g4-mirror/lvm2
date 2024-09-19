@@ -913,16 +913,27 @@ int fs_get_blkid(const char *pathname, struct fs_info *fsi)
 	if (!blkid_probe_lookup_value(probe, "BLOCK_SIZE", &str, &len) && len)
 		fsi->fs_block_size_bytes = atoi(str);
 
-	if (!blkid_probe_lookup_value(probe, "FSLASTBLOCK", &str, &len) && len)
-		fslastblock = strtoull(str, NULL, 0);
-
 	if (!blkid_probe_lookup_value(probe, "FSBLOCKSIZE", &str, &len) && len)
 		fsblocksize = (unsigned int)atoi(str);
 
-	blkid_free_probe(probe);
+	if (!strcmp(fsi->fstype, "swap")) {
+		/*
+		 * For swap, there's no FSLASTBLOCK.
+		 * We can use FSSIZE (size of the usable swap area) + FSBLOCKSIZE (size of the swap header)
+		 */
+		if (!blkid_probe_lookup_value(probe, "FSSIZE", &str, &len) && len)
+			fsi->fs_last_byte = strtoull(str, NULL, 0);
 
-	if (fslastblock && fsblocksize)
-		fsi->fs_last_byte = fslastblock * fsblocksize;
+		fsi->fs_last_byte += fsblocksize;
+	} else {
+		if (!blkid_probe_lookup_value(probe, "FSLASTBLOCK", &str, &len) && len)
+			fslastblock = strtoull(str, NULL, 0);
+
+		if (fslastblock && fsblocksize)
+			fsi->fs_last_byte = fslastblock * fsblocksize;
+	}
+
+	blkid_free_probe(probe);
 
 	log_debug("libblkid TYPE %s BLOCK_SIZE %d FSLASTBLOCK %llu FSBLOCKSIZE %u fs_last_byte %llu",
 		  fsi->fstype, fsi->fs_block_size_bytes, (unsigned long long)fslastblock, fsblocksize,
