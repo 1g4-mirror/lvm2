@@ -422,7 +422,7 @@ dnl -- thin_check needs-check flag
 AC_ARG_ENABLE(thin_check_needs_check,
 	      AS_HELP_STRING([--disable-thin_check_needs_check],
 			     [required if thin_check version is < 0.3.0]),
-	      THIN_CHECK_NEEDS_CHECK=$enableval, THIN_CHECK_NEEDS_CHECK="yes")
+	      THIN_CHECK_NEEDS_CHECK=$enableval, THIN_CHECK_NEEDS_CHECK="autodetect")
 
 # Test if necessary thin tools are available
 # if not - use plain defaults and warn user
@@ -437,20 +437,24 @@ AS_CASE(["$THIN"],
 			THIN_CONFIGURE_WARN="y"
 		])
 	])
-	AS_IF([test "$THIN_CHECK_NEEDS_CHECK" = "yes" && test "$THIN_CONFIGURE_WARN" != "y"], [
-		THIN_CHECK_VSN=$("$THIN_CHECK_CMD" -V 2>/dev/null)
-		THIN_CHECK_VSN=${THIN_CHECK_VSN##* }  # trim away all before the first space
-		THIN_CHECK_VSN_MAJOR=$(echo "$THIN_CHECK_VSN" | $AWK -F '.' '{print $1}')
-		THIN_CHECK_VSN_MINOR=$(echo "$THIN_CHECK_VSN" | $AWK -F '.' '{print $2}')
+	AS_IF([test "$THIN_CHECK_NEEDS_CHECK" = "autodetect"], [
+		AS_IF([test "$THIN_CONFIGURE_WARN" != "y"], [
+			THIN_CHECK_VSN=$("$THIN_CHECK_CMD" -V 2>/dev/null)
+			THIN_CHECK_VSN=${THIN_CHECK_VSN##* }  # trim away all before the first space
+			THIN_CHECK_VSN_MAJOR=$(echo "$THIN_CHECK_VSN" | $AWK -F '.' '{print $1}')
+			THIN_CHECK_VSN_MINOR=$(echo "$THIN_CHECK_VSN" | $AWK -F '.' '{print $2}')
 
-		AS_IF([test -z "$THIN_CHECK_VSN_MAJOR" || test -z "$THIN_CHECK_VSN_MINOR"], [
-			AC_MSG_WARN([$THIN_CHECK_CMD: Bad version "$THIN_CHECK_VSN" found])
-			THIN_CHECK_VERSION_WARN="y"
-			THIN_CHECK_NEEDS_CHECK="no"
-		], [test "$THIN_CHECK_VSN_MAJOR" -eq 0 && test "$THIN_CHECK_VSN_MINOR" -lt 3], [
-			AC_MSG_WARN([$THIN_CHECK_CMD: Old version "$THIN_CHECK_VSN" found])
-			THIN_CHECK_VERSION_WARN="y"
-			THIN_CHECK_NEEDS_CHECK="no"
+			AS_IF([test -z "$THIN_CHECK_VSN_MAJOR" || test -z "$THIN_CHECK_VSN_MINOR"], [
+				AC_MSG_WARN([$THIN_CHECK_CMD: Bad version "$THIN_CHECK_VSN" found])
+				THIN_CHECK_VERSION_WARN="y"
+				THIN_CHECK_NEEDS_CHECK="no"
+			], [test "$THIN_CHECK_VSN_MAJOR" -eq 0 && test "$THIN_CHECK_VSN_MINOR" -lt 3], [
+				AC_MSG_WARN([$THIN_CHECK_CMD: Old version "$THIN_CHECK_VSN" found])
+				THIN_CHECK_VERSION_WARN="y"
+				THIN_CHECK_NEEDS_CHECK="no"
+			], [
+				THIN_CHECK_NEEDS_CHECK="yes"
+			])
 		])
 	])
 	# Empty means a config way to ignore thin dumping
@@ -535,7 +539,7 @@ dnl -- cache_check needs-check flag
 AC_ARG_ENABLE(cache_check_needs_check,
 	      AS_HELP_STRING([--disable-cache_check_needs_check],
 			     [required if cache_check version is < 0.5]),
-	      CACHE_CHECK_NEEDS_CHECK=$enableval, CACHE_CHECK_NEEDS_CHECK="yes")
+	      CACHE_CHECK_NEEDS_CHECK=$enableval, CACHE_CHECK_NEEDS_CHECK="autodetect")
 
 # Test if necessary cache tools are available
 # if not - use plain defaults and warn user
@@ -550,30 +554,34 @@ AS_CASE(["$CACHE"],
 			CACHE_CONFIGURE_WARN="y"
 		])
 	])
-	AS_IF([test "$CACHE_CHECK_NEEDS_CHECK" = "yes" && test "$CACHE_CONFIGURE_WARN" != "y"], [
-		"$CACHE_CHECK_CMD" -V 2>/dev/null >conftest.tmp
-		read -r CACHE_CHECK_VSN < conftest.tmp
-		IFS=.- read -r CACHE_CHECK_VSN_MAJOR CACHE_CHECK_VSN_MINOR CACHE_CHECK_VSN_PATCH LEFTOVER < conftest.tmp
-		rm -f conftest.tmp
+	AS_IF([test "$CACHE_CHECK_NEEDS_CHECK" = "autodetect"], [
+		AS_IF([test "$CACHE_CONFIGURE_WARN" != "y"], [
+			"$CACHE_CHECK_CMD" -V 2>/dev/null >conftest.tmp
+			read -r CACHE_CHECK_VSN < conftest.tmp
+			IFS=.- read -r CACHE_CHECK_VSN_MAJOR CACHE_CHECK_VSN_MINOR CACHE_CHECK_VSN_PATCH LEFTOVER < conftest.tmp
+			rm -f conftest.tmp
 
-		# Require version >= 0.5.4 for --clear-needs-check-flag
-		CACHE_CHECK_VSN_MAJOR=${CACHE_CHECK_VSN_MAJOR##* }
-		AS_IF([test -z "$CACHE_CHECK_VSN_MAJOR" \
-			|| test -z "$CACHE_CHECK_VSN_MINOR" \
-			|| test -z "$CACHE_CHECK_VSN_PATCH"], [
-			AC_MSG_WARN([$CACHE_CHECK_CMD: Bad version "$CACHE_CHECK_VSN" found])
-			CACHE_CHECK_VERSION_WARN="y"
-			CACHE_CHECK_NEEDS_CHECK="no"
-		], [test "$CACHE_CHECK_VSN_MAJOR" -eq 0], [
-			AS_IF([test "$CACHE_CHECK_VSN_MINOR" -lt 5 \
-				|| ( test "$CACHE_CHECK_VSN_MINOR" -eq 5 && test "$CACHE_CHECK_VSN_PATCH" -lt 4 )], [
-				AC_MSG_WARN([$CACHE_CHECK_CMD: Old version "$CACHE_CHECK_VSN" found])
+			# Require version >= 0.5.4 for --clear-needs-check-flag
+			CACHE_CHECK_VSN_MAJOR=${CACHE_CHECK_VSN_MAJOR##* }
+			AS_IF([test -z "$CACHE_CHECK_VSN_MAJOR" \
+				|| test -z "$CACHE_CHECK_VSN_MINOR" \
+				|| test -z "$CACHE_CHECK_VSN_PATCH"], [
+				AC_MSG_WARN([$CACHE_CHECK_CMD: Bad version "$CACHE_CHECK_VSN" found])
 				CACHE_CHECK_VERSION_WARN="y"
 				CACHE_CHECK_NEEDS_CHECK="no"
-			])
-			AS_IF([test "$CACHE_CHECK_VSN_MINOR" -lt 7], [
-				AC_MSG_WARN([$CACHE_CHECK_CMD: Old version "$CACHE_CHECK_VSN" does not support new cache format V2])
-				CACHE_CHECK_VERSION_WARN=y
+			], [test "$CACHE_CHECK_VSN_MAJOR" -eq 0], [
+				AS_IF([test "$CACHE_CHECK_VSN_MINOR" -lt 5 \
+					|| ( test "$CACHE_CHECK_VSN_MINOR" -eq 5 && test "$CACHE_CHECK_VSN_PATCH" -lt 4 )], [
+					AC_MSG_WARN([$CACHE_CHECK_CMD: Old version "$CACHE_CHECK_VSN" found])
+					CACHE_CHECK_VERSION_WARN="y"
+					CACHE_CHECK_NEEDS_CHECK="no"
+				])
+				AS_IF([test "$CACHE_CHECK_VSN_MINOR" -lt 7], [
+					AC_MSG_WARN([$CACHE_CHECK_CMD: Old version "$CACHE_CHECK_VSN" does not support new cache format V2])
+					CACHE_CHECK_VERSION_WARN=y
+				])
+			], [
+				CACHE_CHECK_NEEDS_CHECK="yes"
 			])
 		])
 	])
