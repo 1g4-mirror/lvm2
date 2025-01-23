@@ -709,7 +709,7 @@ out:
 		if (!s.daemon_fini(&s))
 			failed = 1;
 
-	INFO(&s, "%s shutting down", s.name);
+	DEBUGLOG(&s, "%s shutting down", s.name);
 
 	closelog(); /* FIXME */
 	if (s.pidfile)
