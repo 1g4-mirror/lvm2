@@ -2391,7 +2391,7 @@ int main(int argc, char *argv[])
 	if (!_foreground)
 		kill(getppid(), SIGTERM);
 
-	log_notice("dmeventd ready for processing.");
+	log_debug("dmeventd ready for processing.");
 
 	_idle_since = time(NULL);
 
@@ -2447,7 +2447,7 @@ int main(int argc, char *argv[])
 
 	pthread_mutex_destroy(&_global_mutex);
 
-	log_notice("dmeventd shutting down.");
+	log_debug("dmeventd shutting down.");
 
 	if (fifos.client >= 0 && close(fifos.client))
 		log_sys_debug("client close", fifos.client_path);
