@@ -94,7 +94,7 @@ lvchange \(em Change the attributes of logical volume(s)
 .br
  \fB-P\fP|\fB--partial\fP
 .br
- \fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP
+ \fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP
 .br
  \fB-M\fP|\fB--persistent\fP \fBy\fP|\fBn\fP
 .br
@@ -161,7 +161,7 @@ required, after which the others are optional.
 .RS 4
 ( \fB-C\fP|\fB--contiguous\fP \fBy\fP|\fBn\fP
 .br
-  \fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP
+  \fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP
 .br
   \fB-r\fP|\fB--readahead\fP \fBauto\fP|\fBnone\fP|\fINumber\fP
 .br
@@ -790,7 +790,7 @@ according to the  missing_stripe_filler setting.
 Metadata may not be changed with this option.
 .
 .HP
-\fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP
+\fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP
 .br
 Set access permission to read only \fBr\fP or read and write \fBrw\fP.
 .
@@ -834,7 +834,7 @@ a suitable value automatically.
 \fB--readonly\fP
 .br
 Prevent the command from making changes, including activation and
-metadata updates.  (See --permission r for read only LVs.)
+metadata updates.  (See --permissions r for read only LVs.)
 .
 .HP
 \fB--rebuild\fP \fIPV\fP

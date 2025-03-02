@@ -1521,7 +1521,7 @@ cfg_array(activation_read_only_volume_list_CFG, "read_only_volume_list", activat
 	"If this list is defined, each LV that is to be activated is checked\n"
 	"against this list, and if it matches, it is activated in read-only\n"
 	"mode. This overrides the permission setting stored in the metadata,\n"
-	"e.g. from --permission rw.\n"
+	"e.g. from --permissions rw.\n"
 	"#\n"
 	"Accepted values:\n"
 	"  vgname\n"

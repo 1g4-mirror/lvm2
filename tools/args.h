@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2001-2004 Sistina Software, Inc. All rights reserved.
- * Copyright (C) 2004-2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2004-2025 Red Hat, Inc. All rights reserved.
  *
  * This file is part of LVM2.
  *
@@ -674,7 +674,7 @@ arg(raidintegritymode_ARG, '\0', "raidintegritymode", string_VAL, 0, 0,
 
 arg(readonly_ARG, '\0', "readonly", 0, 0, 0,
     "Prevent the command from making changes, including activation and\n"
-    "metadata updates.  (See --permission r for read only LVs.)\n")
+    "metadata updates.  (See --permissions r for read only LVs.)\n")
 
 arg(refresh_ARG, '\0', "refresh", 0, 0, 0,
     "#lvmdevices\n"
@@ -1578,7 +1578,7 @@ arg(maxphysicalvolumes_ARG, 'p', "maxphysicalvolumes", uint32_VAL, 0, 0,
     "For large numbers of PVs, also see options --pvmetadatacopies,\n"
     "and --vgmetadatacopies for improving performance.\n")
 
-arg(permission_ARG, 'p', "permission", permission_VAL, 0, 0,
+arg(permissions_ARG, 'p', "permissions", permissions_VAL, 0, 0,
     "Set access permission to read only \\fBr\\fP or read and write \\fBrw\\fP.\n")
 
 arg(partial_ARG, 'P', "partial", 0, 0, 0,

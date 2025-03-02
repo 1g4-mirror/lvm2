@@ -890,7 +890,7 @@ int tag_arg(struct cmd_context *cmd __attribute__((unused)), struct arg_values *
 	return 1;
 }
 
-int permission_arg(struct cmd_context *cmd __attribute__((unused)), struct arg_values *av)
+int permissions_arg(struct cmd_context *cmd __attribute__((unused)), struct arg_values *av)
 {
 	av->sign = SIGN_NONE;
 

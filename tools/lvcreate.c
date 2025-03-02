@@ -831,7 +831,7 @@ static int _lvcreate_params(struct cmd_context *cmd,
 	lp->target_attr = ~0;
 	lp->yes = arg_count(cmd, yes_ARG);
 	lp->force = (force_t) arg_count(cmd, force_ARG);
-	lp->permission = arg_uint_value(cmd, permission_ARG,
+	lp->permission = arg_uint_value(cmd, permissions_ARG,
 					LVM_READ | LVM_WRITE);
 
 	/*
@@ -904,7 +904,7 @@ static int _lvcreate_params(struct cmd_context *cmd,
 	name_ARG,\
 	nohints_ARG,\
 	noudevsync_ARG,\
-	permission_ARG,\
+	permissions_ARG,\
 	persistent_ARG,\
 	readahead_ARG,\
 	setactivationskip_ARG,\
@@ -1344,7 +1344,7 @@ static int _determine_cache_argument(struct volume_group *vg,
 		if (!validate_lv_cache_create_origin(lv))
 			return_0;
 
-		if (arg_is_set(cmd, permission_ARG) &&
+		if (arg_is_set(cmd, permissions_ARG) &&
 		    ((lp->permission & LVM_WRITE) != (lv->status & LVM_WRITE))) {
 			/* Reverting permissions on all error path is very complicated */
 			log_error("Change of volume permission is unsupported with cache conversion, use lvchange.");

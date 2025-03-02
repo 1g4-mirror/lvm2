@@ -73,7 +73,7 @@ check inactive $vg $lv1
 lvchange -C y $vg/$lv1
 lvchange -C n $vg/$lv1
 
-# permission_ARG
+# permissions_ARG
 lvchange -p r $vg/$lv1
 lvchange -p rw $vg/$lv1
 

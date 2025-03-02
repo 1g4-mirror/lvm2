@@ -107,7 +107,7 @@ int major_arg(struct cmd_context *cmd, struct arg_values *av);
 int minor_arg(struct cmd_context *cmd, struct arg_values *av);
 int string_arg(struct cmd_context *cmd, struct arg_values *av);
 int tag_arg(struct cmd_context *cmd, struct arg_values *av);
-int permission_arg(struct cmd_context *cmd, struct arg_values *av);
+int permissions_arg(struct cmd_context *cmd, struct arg_values *av);
 int metadatatype_arg(struct cmd_context *cmd, struct arg_values *av);
 int units_arg(struct cmd_context *cmd, struct arg_values *av);
 int segtype_arg(struct cmd_context *cmd, struct arg_values *av);

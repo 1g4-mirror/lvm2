@@ -1,5 +1,6 @@
 Version 2.03.32 - 
 ==================
+  Add command-line --permissions, while still accepting older --permission.
 
 Version 2.03.31 - 27th February 2025
 ====================================
