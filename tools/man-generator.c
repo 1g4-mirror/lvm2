@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2024 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2024, 2025 Red Hat, Inc. All rights reserved.
  *
  * This file is part of LVM2.
  *
@@ -86,7 +86,7 @@ static inline int pextents_arg(struct cmd_context *cmd, struct arg_values *av) {
 static inline int nextents_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
 static inline int string_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
 static inline int tag_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
-static inline int permission_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
+static inline int permissions_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
 static inline int metadatatype_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
 static inline int segtype_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }
 static inline int alloc_arg(struct cmd_context *cmd, struct arg_values *av) { return 0; }

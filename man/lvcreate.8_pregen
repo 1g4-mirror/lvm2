@@ -108,7 +108,7 @@ lvcreate \(em Create a logical volume
 .br
     \fB--noudevsync\fP
 .br
- \fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP
+ \fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP
 .br
  \fB-M\fP|\fB--persistent\fP \fBy\fP|\fBn\fP
 .br
@@ -772,7 +772,7 @@ Common options for command:
 .br
 [ \fB-n\fP|\fB--name\fP \fIString\fP ]
 .br
-[ \fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP ]
+[ \fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP ]
 .br
 [ \fB-M\fP|\fB--persistent\fP \fBy\fP|\fBn\fP ]
 .br
@@ -1256,7 +1256,7 @@ in the background. Only use this if udev is not running or has rules that
 ignore the devices LVM creates.
 .
 .HP
-\fB-p\fP|\fB--permission\fP \fBrw\fP|\fBr\fP
+\fB-p\fP|\fB--permissions\fP \fBrw\fP|\fBr\fP
 .br
 Set access permission to read only \fBr\fP or read and write \fBrw\fP.
 .

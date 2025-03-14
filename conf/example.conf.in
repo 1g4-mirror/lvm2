@@ -1603,7 +1603,7 @@ activation {
 	# If this list is defined, each LV that is to be activated is checked
 	# against this list, and if it matches, it is activated in read-only
 	# mode. This overrides the permission setting stored in the metadata,
-	# e.g. from --permission rw.
+	# e.g. from --permissions rw.
 	#
 	# Accepted values:
 	#   vgname

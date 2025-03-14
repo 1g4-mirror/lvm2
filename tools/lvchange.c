@@ -47,7 +47,7 @@ static int _lvchange_permission(struct cmd_context *cmd,
 	uint32_t lv_access;
 	struct lvinfo info;
 
-	lv_access = arg_uint_value(cmd, permission_ARG, 0);
+	lv_access = arg_uint_value(cmd, permissions_ARG, 0);
 
 	if (!(lv_access & LVM_WRITE) && !(lv->status & LVM_WRITE)) {
 		/* Refresh if it's read-only in metadata but read-write in kernel */
@@ -1278,7 +1278,7 @@ static int _is_option_listed(int opt_enum, const int *options)
 static int _option_allows_group_commit(int opt_enum)
 {
 	static const int _options[] = {
-		permission_ARG,
+		permissions_ARG,
 		alloc_ARG,
 		contiguous_ARG,
 		compression_ARG,
@@ -1381,7 +1381,7 @@ static int _lvchange_properties_single(struct cmd_context *cmd,
 		 * metadata commit/reload for the whole group.
 		 */
 		switch (opt_enum) {
-		case permission_ARG:
+		case permissions_ARG:
 			docmds++;
 			doit += _lvchange_permission(cmd, lv, &mr);
 			break;

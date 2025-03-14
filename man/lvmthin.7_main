@@ -346,7 +346,7 @@ lvcreate commands for thin LVs.
 Thin snapshots are typically taken of other thin LVs within the same thin
 pool.  But, it is also possible to create a thin snapshot of an external
 LV (e.g. linear, striped, thin LV in another thin pool.)  The external
-LV must be read-only (lvchange --permission r) and inactive to be used as
+LV must be read-only (lvchange --permissions r) and inactive to be used as
 a thin external origin.  Writes to the thin snapshot LV are stored in its
 thin pool, and unwritten parts are read from the external origin.  One
 external origin LV can be used for multiple thin snapshots.
@@ -552,7 +552,7 @@ thin pool.)
 .SS Thin Snapshot Creation of an External Origin
 .nf
 # lvcreate -n vol -L 500M vg
-# lvchange --permission r vg/vol
+# lvchange --permissions r vg/vol
 # lvchange -an vg/vol
 # lvcreate --type thin-pool -n pool0 -L 500M vg
 # lvcreate --snapshot -n snap --thinpool pool0 vg/vol
