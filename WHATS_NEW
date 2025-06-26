@@ -1,5 +1,7 @@
 Version 2.03.33 - 
 ==================
+  Add lvm.conf global/lvresize_fs_helper_executable.
+  Enable lvm to use persistent reservations on a VG.
   Various spelling, grammar, formatting, test, and build script improvements.
   Override LC_NUMERIC locale if unsuitable for json_std report format.
   Repair raid arrays with transiently lost devices.
