@@ -1482,6 +1482,23 @@ int dev_is_pmem(struct dev_types *dt, struct device *dev)
 	return _dev_sysfs_block_attribute(dt, "queue/dax", dev, &value) ? (int) value : 0;
 }
 
+int dev_maj_min_cmp(const struct device *dev1, const struct device *dev2)
+{
+	uint32_t maj1, min1;
+	uint32_t maj2, min2;
+
+	maj1 = MAJOR(dev1->dev);
+	maj2 = MAJOR(dev2->dev);
+
+	if (maj1 != maj2)
+		return maj1 - maj2;
+
+	min1 = MINOR(dev1->dev);
+	min2 = MINOR(dev2->dev);
+
+	return min1 - min2;
+}
+
 #else
 
 int dev_get_primary_dev(struct dev_types *dt, struct device *dev, dev_t *result)
