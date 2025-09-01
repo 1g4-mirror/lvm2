@@ -28,6 +28,7 @@
 #include "lib/device/device_id.h"
 #include "lib/device/online.h"
 
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -453,6 +454,49 @@ static int _process_block(struct cmd_context *cmd, struct dev_filter *f,
 	return ret;
 }
 
+/*
+ * Retry sleep times in seconds:
+ * 0.1->0.2->0.4->0.8->1.6->3.2->6.4->12.8->25.6
+ * Cumulative sleep time in seconds:
+ * 0.1->0.3->0.7->1.5->3.1->6.3->12.7->25.5->51.1
+ */
+#define DEV_FLOCK_EXCL_RETRY_SLEEP_START_US 100000
+#define DEV_FLOCK_EXCL_RETRY_COUNT 9
+
+static int _dev_flock_excl_with_retry(struct device *dev, int fd)
+{
+	unsigned sleep_us = DEV_FLOCK_EXCL_RETRY_SLEEP_START_US;
+	unsigned count = 1;
+
+	/* FIXME: for partitions, we need to take the lock for the whole device instead! */
+retry:
+	log_debug("Obtaining exclusive file lock for %s (try #%u).", dev_name(dev), count);
+	if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+		if (errno != EWOULDBLOCK) {
+			log_sys_error("flock", dev_name(dev));
+			close(fd);
+			return 0;
+		}
+
+		if (count <= DEV_FLOCK_EXCL_RETRY_COUNT) {
+			log_debug_devs("Could not obtain exclusive file lock for %s, "
+				       "retrying after %u microseconds.",
+				       dev_name(dev), sleep_us);
+			usleep(sleep_us);
+			sleep_us *= 2;
+			count++;
+			goto retry;
+		} else {
+			log_error("Unable to obtain exclusive file lock for %s. "
+				  "Is another process utilizing the device?",
+				  dev_name(dev));
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 static int _scan_dev_open(struct device *dev)
 {
 	struct dm_list *name_list;
@@ -551,6 +595,13 @@ static int _scan_dev_open(struct device *dev)
 		dev_cache_failed_path(dev, name);
 		dev_cache_verify_aliases(dev);
 		goto next_name;
+	}
+
+	if ((flags & (O_EXCL | O_RDWR)) == (O_EXCL | O_RDWR)) {
+		if (!_dev_flock_excl_with_retry(dev, fd)) {
+			(void) close(fd);
+			return_0;
+		}
 	}
 
 	dev->flags |= DEV_IN_BCACHE;
