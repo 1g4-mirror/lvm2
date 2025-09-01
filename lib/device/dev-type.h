@@ -113,4 +113,7 @@ int fs_get_blkid(const char *pathname, struct fs_info *fsi);
 int dev_is_used_by_active_lv(struct cmd_context *cmd, struct device *dev, int *used_by_lv_count,
 			     char **used_by_dm_name, char **used_by_vg_uuid, char **used_by_lv_uuid);
 
+/* Utility functions */
+int dev_maj_min_cmp(const struct device *dev1, const struct device *dev2);
+
 #endif
