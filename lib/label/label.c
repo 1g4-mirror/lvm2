@@ -1606,10 +1606,27 @@ int label_scan_devs_rw(struct cmd_context *cmd, struct dev_filter *f, struct dm_
 
 int label_scan_devs_excl(struct cmd_context *cmd, struct dev_filter *f, struct dm_list *devs)
 {
-	struct device_list *devl;
+	struct device_list *devl, *sorted_devl, *tmp_devl;
+	struct dm_list sorted_devs;
 	int failed = 0;
 
+	dm_list_init(&sorted_devs);
+
 	dm_list_iterate_items(devl, devs) {
+		if (!(sorted_devl = malloc(sizeof(*sorted_devl)))) {
+			log_error("Failed to allocate device item for sorted list.");
+			failed = 1;
+			goto out;
+		}
+		sorted_devl->dev = devl->dev;
+
+		tmp_devl = NULL;
+		dm_list_iterate_items(tmp_devl, &sorted_devs) {
+			if (dev_maj_min_cmp(sorted_devl->dev, tmp_devl->dev) < 0)
+				break;
+		}
+		dm_list_add(tmp_devl ? &tmp_devl->list : &sorted_devs, &sorted_devl->list);
+
 		label_scan_invalidate(devl->dev);
 		/*
 		 * With this flag set, _scan_dev_open() done by
@@ -1619,7 +1636,10 @@ int label_scan_devs_excl(struct cmd_context *cmd, struct dev_filter *f, struct d
 		devl->dev->flags |= DEV_BCACHE_WRITE;
 	}
 
-	_scan_list(cmd, f, devs, 1, &failed);
+	_scan_list(cmd, f, &sorted_devs, 1, &failed);
+out:
+	dm_list_iterate_items_safe(sorted_devl, tmp_devl, &sorted_devs)
+		free(sorted_devl);
 
 	if (failed)
 		return 0;
