@@ -270,7 +270,7 @@ struct dm_config_tree *config_file_open_and_read(const char *config_file,
 	}
 
 	log_very_verbose("Loading config file: %s", config_file);
-	if (!config_file_read_from_file(cft)) {
+	if (!config_file_read_from_file(cmd, cft)) {
 		log_error("Failed to load config file %s", config_file);
 		goto bad;
 	}
@@ -485,7 +485,8 @@ int override_config_tree_from_profile(struct cmd_context *cmd,
  * and function avoids parsing of mda into config tree which
  * remains unmodified and should not be used.
  */
-int config_file_read_fd(struct dm_config_tree *cft, struct device *dev, dev_io_reason_t reason,
+int config_file_read_fd(struct cmd_context *cmd, struct dm_config_tree *cft,
+			struct device *dev, dev_io_reason_t reason,
 			off_t offset, size_t size, off_t offset2, size_t size2,
 			checksum_fn_t checksum_fn, uint32_t checksum,
 			int checksum_only, int no_dup_node_check, int only_pv_summary)
@@ -532,11 +533,11 @@ int config_file_read_fd(struct dm_config_tree *cft, struct device *dev, dev_io_r
 			}
 		}
 	} else {
-		if (!dev_read_bytes(dev, offset, size, buf))
+		if (!dev_read_bytes(cmd, dev, offset, size, buf))
 			goto out;
 
 		if (size2) {
-			if (!dev_read_bytes(dev, offset2, size2, buf + size))
+			if (!dev_read_bytes(cmd, dev, offset2, size2, buf + size))
 				goto out;
 		}
 	}
@@ -598,7 +599,7 @@ int config_file_read_fd(struct dm_config_tree *cft, struct device *dev, dev_io_r
 	return r;
 }
 
-int config_file_read_from_file(struct dm_config_tree *cft)
+int config_file_read_from_file(struct cmd_context *cmd, struct dm_config_tree *cft)
 {
 	const char *filename = NULL;
 	struct config_source *cs = dm_config_get_custom(cft);
@@ -643,7 +644,8 @@ int config_file_read_from_file(struct dm_config_tree *cft)
 	fake_dev.fd = fd;
 	cf->dev = &fake_dev;
 
-	r = config_file_read_fd(cft, cf->dev, DEV_IO_MDA_CONTENT, 0, (size_t) info.st_size, 0, 0,
+	r = config_file_read_fd(cmd, cft, cf->dev, DEV_IO_MDA_CONTENT, 0,
+				(size_t) info.st_size, 0, 0,
 				(checksum_fn_t) NULL, 0, 0, 0, 0);
 
 	free((void*)alias->str);

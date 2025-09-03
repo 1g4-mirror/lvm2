@@ -646,13 +646,13 @@ static int _extend_sanlock_lv(struct cmd_context *cmd, struct volume_group *vg, 
 		return 0;
 	}
 
-	if (!label_scan_open(dev)) {
+	if (!label_scan_open(cmd, dev)) {
 		log_error("Extend sanlock LV %s cannot open device.", display_lvname(lv));
 		return 0;
 	}
 
 	for (i = 0; i < extend_mb; i++) {
-		if (!dev_write_zeros(dev, old_size_bytes + (i * ONE_MB_IN_BYTES), ONE_MB_IN_BYTES)) {
+		if (!dev_write_zeros(cmd, dev, old_size_bytes + (i * ONE_MB_IN_BYTES), ONE_MB_IN_BYTES)) {
 			log_error("Extend sanlock LV %s cannot zero device at " FMTu64 ".",
 				  display_lvname(lv), (old_size_bytes + i * ONE_MB_IN_BYTES));
 			label_scan_invalidate(dev);

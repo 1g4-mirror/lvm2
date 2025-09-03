@@ -1581,7 +1581,7 @@ static int _pvscan_cache_args(struct cmd_context *cmd, int argc, char **argv,
 	dm_list_iterate_items_safe(devl, devl2, &pvscan_devs) {
 		int has_pvid;
 
-		if (!label_read_pvid(devl->dev, &has_pvid)) {
+		if (!label_read_pvid(cmd, devl->dev, &has_pvid)) {
 			log_print_pvscan(cmd, "%s cannot read label.", dev_name(devl->dev));
 			dm_list_del(&devl->list);
 			continue;

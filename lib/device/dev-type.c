@@ -615,7 +615,7 @@ static int _is_partitionable(struct dev_types *dt, struct device *dev)
 	return 1;
 }
 
-static int _has_gpt_partition_table(struct device *dev)
+static int _has_gpt_partition_table(struct cmd_context *cmd, struct device *dev)
 {
 	unsigned int pbs, lbs;
 	uint64_t entries_start;
@@ -638,7 +638,7 @@ static int _has_gpt_partition_table(struct device *dev)
 	if (!dev_get_direct_block_sizes(dev, &pbs, &lbs))
 		return_0;
 
-	if (!dev_read_bytes(dev, PART_GPT_HEADER_OFFSET_LBA * lbs, sizeof(gpt_header), &gpt_header))
+	if (!dev_read_bytes(cmd, dev, PART_GPT_HEADER_OFFSET_LBA * lbs, sizeof(gpt_header), &gpt_header))
 		return_0;
 
 	/* the gpt table is always written using LE on disk */
@@ -651,7 +651,7 @@ static int _has_gpt_partition_table(struct device *dev)
 	sz_entry = le32toh(gpt_header.sz_part_entry);
 
 	for (i = 0; i < nr_entries; i++) {
-		if (!dev_read_bytes(dev, entries_start + (uint64_t)i * sz_entry,
+		if (!dev_read_bytes(cmd, dev, entries_start + (uint64_t)i * sz_entry,
 				    sizeof(gpt_part_entry), &gpt_part_entry))
 			return_0;
 
@@ -674,7 +674,7 @@ static int _has_gpt_partition_table(struct device *dev)
  *     - or if it does have a partition table, but without any partition defined,
  *     - or on error
  */
-static int _has_partition_table(struct device *dev)
+static int _has_partition_table(struct cmd_context *cmd, struct device *dev)
 {
 	int ret = 0;
 	unsigned p;
@@ -684,7 +684,7 @@ static int _has_partition_table(struct device *dev)
 		uint16_t magic;
 	} __attribute__((packed)) buf; /* sizeof() == SECTOR_SIZE */
 
-	if (!dev_read_bytes(dev, UINT64_C(0), sizeof(buf), &buf))
+	if (!dev_read_bytes(cmd, dev, UINT64_C(0), sizeof(buf), &buf))
 		return_0;
 
 	/* FIXME Check for other types of partition table too */
@@ -704,14 +704,14 @@ static int _has_partition_table(struct device *dev)
 				 * check for gpt partition table.
 				 */
 				if (buf.part[p].sys_ind == PART_MSDOS_TYPE_GPT_PMBR && !ret)
-					ret = _has_gpt_partition_table(dev);
+					ret = _has_gpt_partition_table(cmd, dev);
 				else
 					ret = 1;
 			}
 		}
 	} else
 		/* Check for gpt partition table. */
-		ret = _has_gpt_partition_table(dev);
+		ret = _has_gpt_partition_table(cmd, dev);
 
 	return ret;
 }
@@ -763,7 +763,7 @@ static int _dev_is_partitioned_udev(struct dev_types *dt, struct device *dev)
 }
 #endif
 
-static int _dev_is_partitioned_native(struct dev_types *dt, struct device *dev)
+static int _dev_is_partitioned_native(struct cmd_context *cmd, struct dev_types *dt, struct device *dev)
 {
 	int r;
 
@@ -771,7 +771,7 @@ static int _dev_is_partitioned_native(struct dev_types *dt, struct device *dev)
 	if ((MAJOR(dev->dev) == dt->dasd_major) && dasd_is_cdl_formatted(dev))
 		return 1;
 
-	r = _has_partition_table(dev);
+	r = _has_partition_table(cmd, dev);
 
 	return r;
 }
@@ -783,7 +783,7 @@ int dev_is_partitioned(struct cmd_context *cmd, struct device *dev)
 	if (!_is_partitionable(dt, dev))
 		return 0;
 
-	if (_dev_is_partitioned_native(dt, dev) == 1)
+	if (_dev_is_partitioned_native(cmd, dt, dev) == 1)
 		return 1;
 
 	if (external_device_info_source() == DEV_EXT_UDEV) {
@@ -1096,7 +1096,8 @@ static inline int _type_in_flag_list(const char *type, uint32_t flag_list)
 #define MSG_FAILED_SIG_LENGTH "Failed to get length of the %s signature on %s."
 #define MSG_WIPING_SKIPPED " Wiping skipped."
 
-static int _blkid_wipe(blkid_probe probe, struct device *dev, const char *name,
+static int _blkid_wipe(struct cmd_context *cmd, blkid_probe probe,
+		       struct device *dev, const char *name,
 		       uint32_t types_to_exclude, uint32_t types_no_prompt,
 		       int yes, force_t force)
 {
@@ -1173,7 +1174,7 @@ static int _blkid_wipe(blkid_probe probe, struct device *dev, const char *name,
 	} else
 		log_verbose(_msg_wiping, type, name);
 
-	if (!dev_write_zeros(dev, offset_value, len)) {
+	if (!dev_write_zeros(cmd, dev, offset_value, len)) {
 		log_error("Failed to wipe %s signature on %s.", type, name);
 		return 0;
 	}
@@ -1181,7 +1182,8 @@ static int _blkid_wipe(blkid_probe probe, struct device *dev, const char *name,
 	return 1;
 }
 
-static int _wipe_known_signatures_with_blkid(struct device *dev, const char *name,
+static int _wipe_known_signatures_with_blkid(struct cmd_context *cmd,
+					     struct device *dev, const char *name,
 					     uint32_t types_to_exclude,
 					     uint32_t types_no_prompt,
 					     int yes, force_t force, int *wiped)
@@ -1218,7 +1220,8 @@ static int _wipe_known_signatures_with_blkid(struct device *dev, const char *nam
 						 BLKID_SUBLKS_BADCSUM);
 
 	while (!blkid_do_probe(probe)) {
-		if ((r_wipe = _blkid_wipe(probe, dev, name, types_to_exclude, types_no_prompt, yes, force)) == 1) {
+		if ((r_wipe = _blkid_wipe(cmd, probe, dev, name, types_to_exclude,
+					  types_no_prompt, yes, force)) == 1) {
 			(*wiped)++;
 			if (blkid_probe_step_back(probe)) {
 				log_error("Failed to step back blkid probe to check just wiped signature.");
@@ -1247,9 +1250,10 @@ out:
 
 #endif /* BLKID_WIPING_SUPPORT */
 
-static int _wipe_signature(struct cmd_context *cmd, struct device *dev, const char *type, const char *name,
-			   int wipe_len, int yes, force_t force, int *wiped,
-			   int (*signature_detection_fn)(struct cmd_context *cmd, struct device *dev, uint64_t *offset_found, int full))
+static int _wipe_signature(struct cmd_context *cmd, struct device *dev, const char *type,
+			   const char *name, int wipe_len, int yes, force_t force, int *wiped,
+			   int (*signature_detection_fn)(struct cmd_context *cmd, struct device *dev,
+			   uint64_t *offset_found, int full))
 {
 	int wipe;
 	uint64_t offset_found = 0;
@@ -1273,7 +1277,7 @@ static int _wipe_signature(struct cmd_context *cmd, struct device *dev, const ch
 	}
 
 	log_print_unless_silent("Wiping %s on %s.", type, name);
-	if (!dev_write_zeros(dev, offset_found, wipe_len)) {
+	if (!dev_write_zeros(cmd, dev, offset_found, wipe_len)) {
 		log_error("Failed to wipe %s on %s.", type, name);
 		return 0;
 	}
@@ -1310,7 +1314,7 @@ int wipe_known_signatures(struct cmd_context *cmd, struct device *dev,
 
 #ifdef BLKID_WIPING_SUPPORT
 	if (blkid_wiping_enabled)
-		return _wipe_known_signatures_with_blkid(dev, name,
+		return _wipe_known_signatures_with_blkid(cmd, dev, name,
 							 types_to_exclude,
 							 types_no_prompt,
 							 yes, force, wiped);

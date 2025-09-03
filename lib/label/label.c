@@ -111,7 +111,7 @@ struct labeller *label_get_handler(const char *name)
 }
 
 /* FIXME Also wipe associated metadata area headers? */
-int label_remove(struct device *dev)
+int label_remove(struct cmd_context *cmd, struct device *dev)
 {
 	char readbuf[LABEL_SIZE] __attribute__((aligned(8)));
 	int r = 1;
@@ -123,7 +123,7 @@ int label_remove(struct device *dev)
 
 	log_very_verbose("Scanning for labels to wipe from %s", dev_name(dev));
 
-	if (!label_scan_open_excl(dev)) {
+	if (!label_scan_open_excl(cmd, dev)) {
 		log_error("Failed to open device %s", dev_name(dev));
 		return 0;
 	}
@@ -134,7 +134,7 @@ int label_remove(struct device *dev)
 
 		memset(readbuf, 0, sizeof(readbuf));
 
-		if (!dev_read_bytes(dev, sector << SECTOR_SHIFT, LABEL_SIZE, readbuf)) {
+		if (!dev_read_bytes(cmd, dev, sector << SECTOR_SHIFT, LABEL_SIZE, readbuf)) {
 			log_error("Failed to read label from %s sector %llu",
 				  dev_name(dev), (unsigned long long)sector);
 			continue;
@@ -160,7 +160,7 @@ int label_remove(struct device *dev)
 			log_very_verbose("%s: Wiping label at sector %llu",
 					 dev_name(dev), (unsigned long long)sector);
 
-			if (!dev_write_zeros(dev, sector << SECTOR_SHIFT, LABEL_SIZE)) {
+			if (!dev_write_zeros(cmd, dev, sector << SECTOR_SHIFT, LABEL_SIZE)) {
 				log_error("Failed to remove label from %s at sector %llu",
 					  dev_name(dev), (unsigned long long)sector);
 				r = 0;
@@ -211,7 +211,7 @@ int label_write(struct device *dev, struct label *label)
 			 PRIu32 ".", dev_name(dev), label->sector,
 			 htole32(lh->offset_xl));
 
-	if (!label_scan_open(dev)) {
+	if (!label_scan_open(label->labeller->fmt->cmd, dev)) {
 		log_error("Failed to open device %s", dev_name(dev));
 		return 0;
 	}
@@ -220,7 +220,7 @@ int label_write(struct device *dev, struct label *label)
 
 	dev_set_last_byte(dev, offset + LABEL_SIZE);
 
-	if (!dev_write_bytes(dev, offset, LABEL_SIZE, buf)) {
+	if (!dev_write_bytes(label->labeller->fmt->cmd, dev, offset, LABEL_SIZE, buf)) {
 		log_debug_devs("Failed to write label to %s", dev_name(dev));
 		return 0;
 	}
@@ -496,7 +496,7 @@ retry:
 	return 1;
 }
 
-static int _scan_dev_open(struct device *dev)
+static int _scan_dev_open(struct cmd_context *cmd, struct device *dev)
 {
 	struct dm_list *name_list;
 	struct dm_str_list *name_sl;
@@ -709,7 +709,7 @@ static int _scan_list(struct cmd_context *cmd, struct dev_filter *f,
 			break;
 
 		if (!_in_bcache(devl->dev)) {
-			if (!_scan_dev_open(devl->dev)) {
+			if (!_scan_dev_open(cmd, devl->dev)) {
 				log_debug_devs("Scan failed to open %u:%u %s.",
 					       MAJOR(devl->dev->dev), MINOR(devl->dev->dev), dev_name(devl->dev));
 				dm_list_del(&devl->list);
@@ -961,10 +961,10 @@ int label_scan_for_pvid(struct cmd_context *cmd, char *pvid, struct device **dev
 
 		memset(buf, 0, sizeof(buf));
 
-		if (!label_scan_open(dev))
+		if (!label_scan_open(cmd, dev))
 			continue;
 
-		if (!dev_read_bytes(dev, 512, LABEL_SIZE, buf)) {
+		if (!dev_read_bytes(cmd, dev, 512, LABEL_SIZE, buf)) {
 			_scan_dev_close(dev);
 			goto out;
 		}
@@ -1184,7 +1184,7 @@ int label_scan_vg_online(struct cmd_context *cmd, const char *vgname,
 		struct dev_use *du;
 		int has_pvid;
 
-		if (!label_read_pvid(devl->dev, &has_pvid)) {
+		if (!label_read_pvid(cmd, devl->dev, &has_pvid)) {
 			log_print_unless_silent("%s cannot read label.", dev_name(devl->dev));
 			dm_list_del(&devl->list);
 			dm_list_add(&devs_drop, &devl->list);
@@ -1548,13 +1548,13 @@ int label_scan(struct cmd_context *cmd)
  * Read the header of the disk and if it's a PV
  * save the pvid in dev->pvid.
  */
-int label_read_pvid(struct device *dev, int *has_pvid)
+int label_read_pvid(struct cmd_context *cmd, struct device *dev, int *has_pvid)
 {
 	char buf[4096] __attribute__((aligned(8))) = { 0 };
 	struct label_header *lh;
 	struct pv_header *pvh;
 
-	if (!label_scan_open(dev))
+	if (!label_scan_open(cmd, dev))
 		return_0;
 
 	/*
@@ -1563,7 +1563,7 @@ int label_read_pvid(struct device *dev, int *has_pvid)
 	 * which works, but there's a bcache issue that
 	 * prevents proper invalidation after that.
 	 */
-	if (!dev_read_bytes(dev, 0, 4096, buf)) {
+	if (!dev_read_bytes(cmd, dev, 0, 4096, buf)) {
 		label_scan_invalidate(dev);
 		return_0;
 	}
@@ -1823,14 +1823,14 @@ int label_scan_dev(struct cmd_context *cmd, struct device *dev)
  * to be open so we can use dev->bcache_di to write.
  */
 
-int label_scan_open(struct device *dev)
+int label_scan_open(struct cmd_context *cmd, struct device *dev)
 {
 	if (!_in_bcache(dev))
-		return _scan_dev_open(dev);
+		return _scan_dev_open(cmd, dev);
 	return 1;
 }
 
-int label_scan_open_excl(struct device *dev)
+int label_scan_open_excl(struct cmd_context *cmd, struct device *dev)
 {
 	if (_in_bcache(dev) && !(dev->flags & DEV_BCACHE_EXCL)) {
 		log_debug("close and reopen excl %s", dev_name(dev));
@@ -1839,10 +1839,10 @@ int label_scan_open_excl(struct device *dev)
 	}
 	dev->flags |= DEV_BCACHE_EXCL;
 	dev->flags |= DEV_BCACHE_WRITE;
-	return label_scan_open(dev);
+	return label_scan_open(cmd, dev);
 }
 
-int label_scan_open_rw(struct device *dev)
+int label_scan_open_rw(struct cmd_context *cmd, struct device *dev)
 {
 	if (_in_bcache(dev) && !(dev->flags & DEV_BCACHE_WRITE)) {
 		log_debug("close and reopen rw %s", dev_name(dev));
@@ -1850,10 +1850,10 @@ int label_scan_open_rw(struct device *dev)
 		_scan_dev_close(dev);
 	}
 	dev->flags |= DEV_BCACHE_WRITE;
-	return label_scan_open(dev);
+	return label_scan_open(cmd, dev);
 }
 
-int label_scan_reopen_rw(struct device *dev)
+int label_scan_reopen_rw(struct cmd_context *cmd, struct device *dev)
 {
 	const char *name;
 	int flags = 0;
@@ -1881,7 +1881,7 @@ int label_scan_reopen_rw(struct device *dev)
 			return 0;
 		}
 		dev->flags |= DEV_BCACHE_WRITE;
-		return _scan_dev_open(dev);
+		return _scan_dev_open(cmd, dev);
 	}
 
 	if ((dev->flags & DEV_BCACHE_WRITE))
@@ -1931,7 +1931,7 @@ int label_scan_reopen_rw(struct device *dev)
 	return 1;
 }
 
-bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
+bool dev_read_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, void *data)
 {
 	if (!scan_bcache) {
 		/* Should not happen */
@@ -1941,7 +1941,7 @@ bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 
 	if (dev->bcache_di < 0) {
 		/* This is not often needed. */
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for reading at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;
@@ -1958,7 +1958,7 @@ bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 
 }
 
-bool dev_write_bytes(struct device *dev, uint64_t start, size_t len, void *data)
+bool dev_write_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, void *data)
 {
 	if (test_mode())
 		return true;
@@ -1976,13 +1976,13 @@ bool dev_write_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 		_scan_dev_close(dev);
 
 		dev->flags |= DEV_BCACHE_WRITE;
-		(void) label_scan_open(dev); /* checked later */
+		(void) label_scan_open(cmd, dev); /* checked later */
 	}
 
 	if (dev->bcache_di < 0) {
 		/* This is not often needed. */
 		dev->flags |= DEV_BCACHE_WRITE;
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for writing at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;
@@ -2017,12 +2017,12 @@ void dev_invalidate(struct device *dev)
 	bcache_invalidate_di(scan_bcache, dev->bcache_di);
 }
 
-bool dev_write_zeros(struct device *dev, uint64_t start, size_t len)
+bool dev_write_zeros(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len)
 {
-	return dev_set_bytes(dev, start, len, 0);
+	return dev_set_bytes(cmd, dev, start, len, 0);
 }
 
-bool dev_set_bytes(struct device *dev, uint64_t start, size_t len, uint8_t val)
+bool dev_set_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, uint8_t val)
 {
 	bool rv;
 
@@ -2044,7 +2044,7 @@ bool dev_set_bytes(struct device *dev, uint64_t start, size_t len, uint8_t val)
 	if (dev->bcache_di == -1) {
 		/* This is not often needed. */
 		dev->flags |= DEV_BCACHE_WRITE;
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for writing at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;
