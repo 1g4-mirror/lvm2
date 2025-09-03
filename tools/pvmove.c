@@ -614,6 +614,8 @@ static int _pvmove_setup_single(struct cmd_context *cmd,
 				struct processing_handle *handle)
 {
 	struct pvmove_params *pp = (struct pvmove_params *) handle->custom_handle;
+	struct pv_segment *pv_seg;
+	struct lv_segment *lv_seg;
 	const char *lv_name = NULL;
 	struct dm_list *source_pvl;
 	struct dm_list *allocatable_pvs;
@@ -653,8 +655,9 @@ static int _pvmove_setup_single(struct cmd_context *cmd,
 			return ECMD_FAILED;
 		}
 
-		if (lv_is_raid(lv) && lv_raid_has_integrity(lv)) {
-			log_error("pvmove not allowed on raid LV with integrity.");
+		/* raid0 is good to go, but other raid types not. */
+		if (lv_is_raid(lv) && !seg_is_raid0(first_seg(lv))) {
+			log_error("pvmove not allowed on raid LV.");
 			return ECMD_FAILED;
 		}
 
@@ -663,6 +666,24 @@ static int _pvmove_setup_single(struct cmd_context *cmd,
 			if (lv_is_raid(lv_orig) && lv_raid_has_integrity(lv_orig)) {
 				log_error("pvmove not allowed on raid LV with integrity.");
 				return ECMD_FAILED;
+			}
+		}
+	} else {
+		dm_list_iterate_items(pv_seg, &pv->segments) {
+			if (!pvseg_is_allocated(pv_seg))
+				continue;
+
+			lv = pv_seg->lvseg->lv;
+
+			if (lv_is_raid_image(lv) || lv_is_raid_metadata(lv)) {
+				if (!(lv_seg = get_only_segment_using_this_lv(lv)))
+					return_ECMD_FAILED;
+				if (!seg_is_raid0(lv_seg)) {
+					/* raid0 is good to go, but other raid types not. */
+					log_error("pvmove not allowed on PV %s containing raid LV %s.",
+						  pv_name, display_lvname(lv_seg->lv));
+					return ECMD_FAILED;
+				}
 			}
 		}
 	}
