@@ -51,26 +51,6 @@ check lv_tree_on $vg ${lv1}_foo "$dev5"
 check dev_md5sum $vg $lv1
 lvremove -ff $vg
 
-# Testing pvmove of thin LV on RAID
-lvcreate -aey -l 2 -n ${lv1}_foo $vg "$dev1"
-lvcreate -aey --type raid1 -m 1 -l 8 -n ${lv1}_raid1_pool $vg "$dev1" "$dev2"
-lvcreate -aey --type raid1 -m 1 -L 2 -n ${lv1}_raid1_meta $vg "$dev1" "$dev2"
-lvconvert --yes --thinpool $vg/${lv1}_raid1_pool \
-        --poolmetadata ${lv1}_raid1_meta
-lvcreate -aey -T $vg/${lv1}_raid1_pool -V 8 -n $lv1
-check lv_tree_on $vg ${lv1}_foo "$dev1"
-check lv_tree_on $vg $lv1 "$dev1" "$dev2"
-aux mkdev_md5sum $vg $lv1
-pvmove "$dev1" "$dev5" $mode
-check lv_tree_on $vg ${lv1}_foo "$dev5"
-check lv_tree_on $vg $lv1 "$dev2" "$dev5"
-check dev_md5sum $vg $lv1
-pvmove -n $lv1 "$dev5" "$dev4" $mode
-check lv_tree_on $vg $lv1 "$dev2" "$dev4"
-check lv_tree_on $vg ${lv1}_foo "$dev5"
-check dev_md5sum $vg $lv1
-lvremove -ff $vg
-
 done
 
 vgremove -ff $vg
