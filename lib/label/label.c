@@ -454,6 +454,43 @@ static int _process_block(struct cmd_context *cmd, struct dev_filter *f,
 	return ret;
 }
 
+static int _scan_dev_open(struct cmd_context *cmd, struct device *dev);
+
+static struct device *_get_lock_dev(struct cmd_context *cmd, struct device *dev)
+{
+	struct device *lock_dev;
+	dev_t primary_devno;
+	int r;
+
+	if ((r = dev_get_primary_dev(cmd->dev_types, dev, &primary_devno)) == 0)
+		return_NULL;
+
+	if (r == 1) {
+		/* this is a primary device, take a lock for this device */
+		lock_dev = dev;
+	} else if (r == 2) {
+		/* this is a partition device, take a lock for primary device instead */
+		if (!(lock_dev = dev_cache_get_by_devt(cmd, primary_devno))) {
+			log_error("No device found for primary dev %u:%u.",
+				  MAJOR(primary_devno), MINOR(primary_devno));
+			return NULL;
+		}
+
+		/* we need a bcache_fd to hook the flock on */
+		if (!(lock_dev->flags & DEV_IN_BCACHE)) {
+			if (!_scan_dev_open(cmd, lock_dev)) {
+				log_debug_devs("Scan failed to open %u:%u %s "
+					       "(primary of %u:%u %s).",
+					       MAJOR(lock_dev->dev), MINOR(lock_dev->dev), dev_name(lock_dev),
+					       MAJOR(dev->dev), MINOR(dev->dev), dev_name(dev));
+				return NULL;
+			}
+		}
+	}
+
+	return lock_dev;
+}
+
 /*
  * Retry sleep times in seconds:
  * 0.1->0.2->0.4->0.8->1.6->3.2->6.4->12.8->25.6
@@ -463,38 +500,74 @@ static int _process_block(struct cmd_context *cmd, struct dev_filter *f,
 #define DEV_FLOCK_EXCL_RETRY_SLEEP_START_US 100000
 #define DEV_FLOCK_EXCL_RETRY_COUNT 9
 
-static int _dev_flock_excl_with_retry(struct device *dev, int fd)
+static int _dev_flock_excl_with_retry(struct cmd_context *cmd, struct device *dev)
 {
+	static const char obtaining_lock_msg[] = "Obtaining exclusive lock for";
+	static const char existing_lock_msg[] = "Using existing lock for";
 	unsigned sleep_us = DEV_FLOCK_EXCL_RETRY_SLEEP_START_US;
 	unsigned count = 1;
+	struct device *lock_dev;
 
-	/* FIXME: for partitions, we need to take the lock for the whole device instead! */
-retry:
-	log_debug("Obtaining exclusive file lock for %s (try #%u).", dev_name(dev), count);
-	if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
-		if (errno != EWOULDBLOCK) {
-			log_sys_error("flock", dev_name(dev));
-			return 0;
-		}
-
-		if (count <= DEV_FLOCK_EXCL_RETRY_COUNT) {
-			log_debug_devs("Could not obtain exclusive file lock for %s, "
-				       "retrying after %u microseconds.",
-				       dev_name(dev), sleep_us);
-			usleep(sleep_us);
-			sleep_us *= 2;
-			count++;
-			goto retry;
-		} else {
-			log_error("Unable to obtain exclusive file lock for %s. "
-				  "Is another process utilizing the device?",
-				  dev_name(dev));
-			return 0;
-		}
+	if (dev->lock.count > 0) {
+		dev->lock.count++;
+		log_debug_devs("%s %s (count=%u).", existing_lock_msg,
+			       dev_name(dev), dev->lock.count);
+		return 1;
 	}
+
+	if (!(lock_dev = _get_lock_dev(cmd, dev)))
+		return_0;
+retry:
+	if (lock_dev->lock.count == 0) {
+		if (lock_dev == dev)
+			log_debug_devs("%s %s (try #%u).", obtaining_lock_msg,
+				       dev_name(lock_dev), count);
+		else
+			log_debug_devs("%s %s instead of %s (try #%u).", obtaining_lock_msg,
+				       dev_name(lock_dev), dev_name(dev), count);
+
+		if (flock(lock_dev->bcache_fd, LOCK_EX | LOCK_NB) < 0) {
+			if (errno != EWOULDBLOCK) {
+				log_sys_error("flock", dev_name(dev->lock.dev));
+				return 0;
+			}
+
+			if (count <= DEV_FLOCK_EXCL_RETRY_COUNT) {
+				log_debug_devs("Could not obtain exclusive file lock for %s, "
+					       "retrying after %u microseconds.",
+					       dev_name(lock_dev), sleep_us);
+				usleep(sleep_us);
+				sleep_us *= 2;
+				count++;
+				goto retry;
+			} else {
+				log_error("Unable to obtain exclusive file lock for %s. "
+					  "Is another process utilizing the device?",
+					  dev_name(lock_dev));
+				return 0;
+			}
+		}
+	} else {
+		if (lock_dev == dev)
+			log_debug_devs("%s %s (count=%u).", existing_lock_msg,
+				       dev_name(lock_dev), lock_dev->lock.count + 1);
+		else
+			log_debug_devs("%s %s (count=%u) instead of %s.", existing_lock_msg,
+				       dev_name(lock_dev), lock_dev->lock.count + 1, dev_name(dev));
+	}
+
+	if (lock_dev != dev) {
+		lock_dev->lock.dev = lock_dev;
+		lock_dev->lock.count++;
+	}
+
+	dev->lock.dev = lock_dev;
+	dev->lock.count++;
 
 	return 1;
 }
+
+static int _scan_dev_close(struct device *dev);
 
 static int _scan_dev_open(struct cmd_context *cmd, struct device *dev)
 {
@@ -596,13 +669,6 @@ static int _scan_dev_open(struct cmd_context *cmd, struct device *dev)
 		goto next_name;
 	}
 
-	if ((flags & (O_EXCL | O_RDWR)) == (O_EXCL | O_RDWR)) {
-		if (!_dev_flock_excl_with_retry(dev, fd)) {
-			(void) close(fd);
-			return_0;
-		}
-	}
-
 	dev->flags |= DEV_IN_BCACHE;
 	dev->bcache_fd = fd;
 
@@ -616,9 +682,36 @@ static int _scan_dev_open(struct cmd_context *cmd, struct device *dev)
 		return 0;
 	}
 
+	dev->bcache_di = di;
+
+	if ((flags & (O_EXCL | O_RDWR)) == (O_EXCL | O_RDWR)) {
+		if (!_dev_flock_excl_with_retry(cmd, dev)) {
+			(void) _scan_dev_close(dev);
+			return_0;
+		}
+	}
+
 	log_debug("open %s %s di %d fd %d", dev_name(dev), modestr, di, fd);
 
-	dev->bcache_di = di;
+	return 1;
+}
+
+static int _dev_close_lock(struct device *dev)
+{
+	if (dev->lock.count > 1) {
+		dev->lock.count--;
+		log_debug_devs("Not closing %s, remaining lock count: %u.",
+				dev_name(dev), dev->lock.count);
+		return 0;
+	}
+
+	if (dev->lock.count == 1) {
+		log_debug_devs("Dropping lock for %s.", dev_name(dev));
+		if (dev->lock.dev != dev)
+			(void) _scan_dev_close(dev->lock.dev);
+		dev->lock.dev = NULL;
+		dev->lock.count = 0;
+	}
 
 	return 1;
 }
@@ -627,6 +720,9 @@ static int _scan_dev_close(struct device *dev)
 {
 	if (!(dev->flags & DEV_IN_BCACHE))
 		log_error("scan_dev_close %s no DEV_IN_BCACHE set", dev_name(dev));
+
+	if (!_dev_close_lock(dev))
+		return 1;
 
 	dev->flags &= ~DEV_IN_BCACHE;
 	dev->flags &= ~DEV_BCACHE_EXCL;

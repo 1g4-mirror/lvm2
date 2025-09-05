@@ -89,6 +89,9 @@ void dev_init(struct device *dev)
 	dev->ext.enabled = 0;
 	dev->ext.src = DEV_EXT_NONE;
 
+	dev->lock.dev = NULL;
+	dev->lock.count = 0;
+
 	dm_list_init(&dev->aliases);
 	dm_list_init(&dev->ids);
 	dm_list_init(&dev->wwids);
