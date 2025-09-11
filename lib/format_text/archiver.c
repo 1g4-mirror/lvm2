@@ -491,14 +491,14 @@ int backup_restore_vg(struct cmd_context *cmd, struct volume_group *vg,
 			struct device *dev = pv_dev(pvl->pv);
 			const char *pv_name = dev_name(dev);
 
-			if (!label_remove(dev)) {
+			if (!label_remove(cmd, dev)) {
 				log_error("Failed to wipe existing label on %s", pv_name);
 				return 0;
 			}
 
 			log_verbose("Zeroing start of device %s", pv_name);
 
-			if (!dev_write_zeros(dev, 0, 2048)) {
+			if (!dev_write_zeros(cmd, dev, 0, 2048)) {
 				log_error("%s not wiped: aborting", pv_name);
 				return 0;
 			}

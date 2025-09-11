@@ -26,7 +26,7 @@ int dev_is_luks(struct cmd_context *cmd, struct device *dev, uint64_t *offset_fo
 	if (offset_found)
 		*offset_found = 0;
 
-	if (!dev_read_bytes(dev, 0, LUKS_SIGNATURE_SIZE, buf))
+	if (!dev_read_bytes(cmd, dev, 0, LUKS_SIGNATURE_SIZE, buf))
 		goto_out;
 
 	ret = memcmp(buf, LUKS_SIGNATURE, LUKS_SIGNATURE_SIZE) ? 0 : 1;

@@ -28,6 +28,7 @@
 #include "lib/device/device_id.h"
 #include "lib/device/online.h"
 
+#include <sys/file.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -110,7 +111,7 @@ struct labeller *label_get_handler(const char *name)
 }
 
 /* FIXME Also wipe associated metadata area headers? */
-int label_remove(struct device *dev)
+int label_remove(struct cmd_context *cmd, struct device *dev)
 {
 	char readbuf[LABEL_SIZE] __attribute__((aligned(8)));
 	int r = 1;
@@ -122,7 +123,7 @@ int label_remove(struct device *dev)
 
 	log_very_verbose("Scanning for labels to wipe from %s", dev_name(dev));
 
-	if (!label_scan_open_excl(dev)) {
+	if (!label_scan_open_excl(cmd, dev)) {
 		log_error("Failed to open device %s", dev_name(dev));
 		return 0;
 	}
@@ -133,7 +134,7 @@ int label_remove(struct device *dev)
 
 		memset(readbuf, 0, sizeof(readbuf));
 
-		if (!dev_read_bytes(dev, sector << SECTOR_SHIFT, LABEL_SIZE, readbuf)) {
+		if (!dev_read_bytes(cmd, dev, sector << SECTOR_SHIFT, LABEL_SIZE, readbuf)) {
 			log_error("Failed to read label from %s sector %llu",
 				  dev_name(dev), (unsigned long long)sector);
 			continue;
@@ -159,7 +160,7 @@ int label_remove(struct device *dev)
 			log_very_verbose("%s: Wiping label at sector %llu",
 					 dev_name(dev), (unsigned long long)sector);
 
-			if (!dev_write_zeros(dev, sector << SECTOR_SHIFT, LABEL_SIZE)) {
+			if (!dev_write_zeros(cmd, dev, sector << SECTOR_SHIFT, LABEL_SIZE)) {
 				log_error("Failed to remove label from %s at sector %llu",
 					  dev_name(dev), (unsigned long long)sector);
 				r = 0;
@@ -210,7 +211,7 @@ int label_write(struct device *dev, struct label *label)
 			 PRIu32 ".", dev_name(dev), label->sector,
 			 htole32(lh->offset_xl));
 
-	if (!label_scan_open(dev)) {
+	if (!label_scan_open(label->labeller->fmt->cmd, dev)) {
 		log_error("Failed to open device %s", dev_name(dev));
 		return 0;
 	}
@@ -219,7 +220,7 @@ int label_write(struct device *dev, struct label *label)
 
 	dev_set_last_byte(dev, offset + LABEL_SIZE);
 
-	if (!dev_write_bytes(dev, offset, LABEL_SIZE, buf)) {
+	if (!dev_write_bytes(label->labeller->fmt->cmd, dev, offset, LABEL_SIZE, buf)) {
 		log_debug_devs("Failed to write label to %s", dev_name(dev));
 		return 0;
 	}
@@ -453,7 +454,122 @@ static int _process_block(struct cmd_context *cmd, struct dev_filter *f,
 	return ret;
 }
 
-static int _scan_dev_open(struct device *dev)
+static int _scan_dev_open(struct cmd_context *cmd, struct device *dev);
+
+static struct device *_get_lock_dev(struct cmd_context *cmd, struct device *dev)
+{
+	struct device *lock_dev;
+	dev_t primary_devno;
+	int r;
+
+	if ((r = dev_get_primary_dev(cmd->dev_types, dev, &primary_devno)) == 0)
+		return_NULL;
+
+	if (r == 1) {
+		/* this is a primary device, take a lock for this device */
+		lock_dev = dev;
+	} else if (r == 2) {
+		/* this is a partition device, take a lock for primary device instead */
+		if (!(lock_dev = dev_cache_get_by_devt(cmd, primary_devno))) {
+			log_error("No device found for primary dev %u:%u.",
+				  MAJOR(primary_devno), MINOR(primary_devno));
+			return NULL;
+		}
+
+		/* we need a bcache_fd to hook the flock on */
+		if (!(lock_dev->flags & DEV_IN_BCACHE)) {
+			if (!_scan_dev_open(cmd, lock_dev)) {
+				log_debug_devs("Scan failed to open %u:%u %s "
+					       "(primary of %u:%u %s).",
+					       MAJOR(lock_dev->dev), MINOR(lock_dev->dev), dev_name(lock_dev),
+					       MAJOR(dev->dev), MINOR(dev->dev), dev_name(dev));
+				return NULL;
+			}
+		}
+	}
+
+	return lock_dev;
+}
+
+/*
+ * Retry sleep times in seconds:
+ * 0.1->0.2->0.4->0.8->1.6->3.2->6.4->12.8->25.6
+ * Cumulative sleep time in seconds:
+ * 0.1->0.3->0.7->1.5->3.1->6.3->12.7->25.5->51.1
+ */
+#define DEV_FLOCK_EXCL_RETRY_SLEEP_START_US 100000
+#define DEV_FLOCK_EXCL_RETRY_COUNT 9
+
+static int _dev_flock_excl_with_retry(struct cmd_context *cmd, struct device *dev)
+{
+	static const char obtaining_lock_msg[] = "Obtaining exclusive lock for";
+	static const char existing_lock_msg[] = "Using existing lock for";
+	unsigned sleep_us = DEV_FLOCK_EXCL_RETRY_SLEEP_START_US;
+	unsigned count = 1;
+	struct device *lock_dev;
+
+	if (dev->lock.count > 0) {
+		dev->lock.count++;
+		log_debug_devs("%s %s (count=%u).", existing_lock_msg,
+			       dev_name(dev), dev->lock.count);
+		return 1;
+	}
+
+	if (!(lock_dev = _get_lock_dev(cmd, dev)))
+		return_0;
+retry:
+	if (lock_dev->lock.count == 0) {
+		if (lock_dev == dev)
+			log_debug_devs("%s %s (try #%u).", obtaining_lock_msg,
+				       dev_name(lock_dev), count);
+		else
+			log_debug_devs("%s %s instead of %s (try #%u).", obtaining_lock_msg,
+				       dev_name(lock_dev), dev_name(dev), count);
+
+		if (flock(lock_dev->bcache_fd, LOCK_EX | LOCK_NB) < 0) {
+			if (errno != EWOULDBLOCK) {
+				log_sys_error("flock", dev_name(dev->lock.dev));
+				return 0;
+			}
+
+			if (count <= DEV_FLOCK_EXCL_RETRY_COUNT) {
+				log_debug_devs("Could not obtain exclusive file lock for %s, "
+					       "retrying after %u microseconds.",
+					       dev_name(lock_dev), sleep_us);
+				usleep(sleep_us);
+				sleep_us *= 2;
+				count++;
+				goto retry;
+			} else {
+				log_error("Unable to obtain exclusive file lock for %s. "
+					  "Is another process utilizing the device?",
+					  dev_name(lock_dev));
+				return 0;
+			}
+		}
+	} else {
+		if (lock_dev == dev)
+			log_debug_devs("%s %s (count=%u).", existing_lock_msg,
+				       dev_name(lock_dev), lock_dev->lock.count + 1);
+		else
+			log_debug_devs("%s %s (count=%u) instead of %s.", existing_lock_msg,
+				       dev_name(lock_dev), lock_dev->lock.count + 1, dev_name(dev));
+	}
+
+	if (lock_dev != dev) {
+		lock_dev->lock.dev = lock_dev;
+		lock_dev->lock.count++;
+	}
+
+	dev->lock.dev = lock_dev;
+	dev->lock.count++;
+
+	return 1;
+}
+
+static int _scan_dev_close(struct device *dev);
+
+static int _scan_dev_open(struct cmd_context *cmd, struct device *dev)
 {
 	struct dm_list *name_list;
 	struct dm_str_list *name_sl;
@@ -566,9 +682,36 @@ static int _scan_dev_open(struct device *dev)
 		return 0;
 	}
 
+	dev->bcache_di = di;
+
+	if ((flags & (O_EXCL | O_RDWR)) == (O_EXCL | O_RDWR)) {
+		if (!_dev_flock_excl_with_retry(cmd, dev)) {
+			(void) _scan_dev_close(dev);
+			return_0;
+		}
+	}
+
 	log_debug("open %s %s di %d fd %d", dev_name(dev), modestr, di, fd);
 
-	dev->bcache_di = di;
+	return 1;
+}
+
+static int _dev_close_lock(struct device *dev)
+{
+	if (dev->lock.count > 1) {
+		dev->lock.count--;
+		log_debug_devs("Not closing %s, remaining lock count: %u.",
+				dev_name(dev), dev->lock.count);
+		return 0;
+	}
+
+	if (dev->lock.count == 1) {
+		log_debug_devs("Dropping lock for %s.", dev_name(dev));
+		if (dev->lock.dev != dev)
+			(void) _scan_dev_close(dev->lock.dev);
+		dev->lock.dev = NULL;
+		dev->lock.count = 0;
+	}
 
 	return 1;
 }
@@ -577,6 +720,9 @@ static int _scan_dev_close(struct device *dev)
 {
 	if (!(dev->flags & DEV_IN_BCACHE))
 		log_error("scan_dev_close %s no DEV_IN_BCACHE set", dev_name(dev));
+
+	if (!_dev_close_lock(dev))
+		return 1;
 
 	dev->flags &= ~DEV_IN_BCACHE;
 	dev->flags &= ~DEV_BCACHE_EXCL;
@@ -659,7 +805,7 @@ static int _scan_list(struct cmd_context *cmd, struct dev_filter *f,
 			break;
 
 		if (!_in_bcache(devl->dev)) {
-			if (!_scan_dev_open(devl->dev)) {
+			if (!_scan_dev_open(cmd, devl->dev)) {
 				log_debug_devs("Scan failed to open %u:%u %s.",
 					       MAJOR(devl->dev->dev), MINOR(devl->dev->dev), dev_name(devl->dev));
 				dm_list_del(&devl->list);
@@ -911,10 +1057,10 @@ int label_scan_for_pvid(struct cmd_context *cmd, char *pvid, struct device **dev
 
 		memset(buf, 0, sizeof(buf));
 
-		if (!label_scan_open(dev))
+		if (!label_scan_open(cmd, dev))
 			continue;
 
-		if (!dev_read_bytes(dev, 512, LABEL_SIZE, buf)) {
+		if (!dev_read_bytes(cmd, dev, 512, LABEL_SIZE, buf)) {
 			_scan_dev_close(dev);
 			goto out;
 		}
@@ -1134,7 +1280,7 @@ int label_scan_vg_online(struct cmd_context *cmd, const char *vgname,
 		struct dev_use *du;
 		int has_pvid;
 
-		if (!label_read_pvid(devl->dev, &has_pvid)) {
+		if (!label_read_pvid(cmd, devl->dev, &has_pvid)) {
 			log_print_unless_silent("%s cannot read label.", dev_name(devl->dev));
 			dm_list_del(&devl->list);
 			dm_list_add(&devs_drop, &devl->list);
@@ -1498,13 +1644,13 @@ int label_scan(struct cmd_context *cmd)
  * Read the header of the disk and if it's a PV
  * save the pvid in dev->pvid.
  */
-int label_read_pvid(struct device *dev, int *has_pvid)
+int label_read_pvid(struct cmd_context *cmd, struct device *dev, int *has_pvid)
 {
 	char buf[4096] __attribute__((aligned(8))) = { 0 };
 	struct label_header *lh;
 	struct pv_header *pvh;
 
-	if (!label_scan_open(dev))
+	if (!label_scan_open(cmd, dev))
 		return_0;
 
 	/*
@@ -1513,7 +1659,7 @@ int label_read_pvid(struct device *dev, int *has_pvid)
 	 * which works, but there's a bcache issue that
 	 * prevents proper invalidation after that.
 	 */
-	if (!dev_read_bytes(dev, 0, 4096, buf)) {
+	if (!dev_read_bytes(cmd, dev, 0, 4096, buf)) {
 		label_scan_invalidate(dev);
 		return_0;
 	}
@@ -1606,10 +1752,27 @@ int label_scan_devs_rw(struct cmd_context *cmd, struct dev_filter *f, struct dm_
 
 int label_scan_devs_excl(struct cmd_context *cmd, struct dev_filter *f, struct dm_list *devs)
 {
-	struct device_list *devl;
+	struct device_list *devl, *sorted_devl, *tmp_devl;
+	struct dm_list sorted_devs;
 	int failed = 0;
 
+	dm_list_init(&sorted_devs);
+
 	dm_list_iterate_items(devl, devs) {
+		if (!(sorted_devl = malloc(sizeof(*sorted_devl)))) {
+			log_error("Failed to allocate device item for sorted list.");
+			failed = 1;
+			goto out;
+		}
+		sorted_devl->dev = devl->dev;
+
+		tmp_devl = NULL;
+		dm_list_iterate_items(tmp_devl, &sorted_devs) {
+			if (dev_maj_min_cmp(sorted_devl->dev, tmp_devl->dev) < 0)
+				break;
+		}
+		dm_list_add(tmp_devl ? &tmp_devl->list : &sorted_devs, &sorted_devl->list);
+
 		label_scan_invalidate(devl->dev);
 		/*
 		 * With this flag set, _scan_dev_open() done by
@@ -1619,7 +1782,10 @@ int label_scan_devs_excl(struct cmd_context *cmd, struct dev_filter *f, struct d
 		devl->dev->flags |= DEV_BCACHE_WRITE;
 	}
 
-	_scan_list(cmd, f, devs, 1, &failed);
+	_scan_list(cmd, f, &sorted_devs, 1, &failed);
+out:
+	dm_list_iterate_items_safe(sorted_devl, tmp_devl, &sorted_devs)
+		free(sorted_devl);
 
 	if (failed)
 		return 0;
@@ -1753,14 +1919,14 @@ int label_scan_dev(struct cmd_context *cmd, struct device *dev)
  * to be open so we can use dev->bcache_di to write.
  */
 
-int label_scan_open(struct device *dev)
+int label_scan_open(struct cmd_context *cmd, struct device *dev)
 {
 	if (!_in_bcache(dev))
-		return _scan_dev_open(dev);
+		return _scan_dev_open(cmd, dev);
 	return 1;
 }
 
-int label_scan_open_excl(struct device *dev)
+int label_scan_open_excl(struct cmd_context *cmd, struct device *dev)
 {
 	if (_in_bcache(dev) && !(dev->flags & DEV_BCACHE_EXCL)) {
 		log_debug("close and reopen excl %s", dev_name(dev));
@@ -1769,10 +1935,10 @@ int label_scan_open_excl(struct device *dev)
 	}
 	dev->flags |= DEV_BCACHE_EXCL;
 	dev->flags |= DEV_BCACHE_WRITE;
-	return label_scan_open(dev);
+	return label_scan_open(cmd, dev);
 }
 
-int label_scan_open_rw(struct device *dev)
+int label_scan_open_rw(struct cmd_context *cmd, struct device *dev)
 {
 	if (_in_bcache(dev) && !(dev->flags & DEV_BCACHE_WRITE)) {
 		log_debug("close and reopen rw %s", dev_name(dev));
@@ -1780,10 +1946,10 @@ int label_scan_open_rw(struct device *dev)
 		_scan_dev_close(dev);
 	}
 	dev->flags |= DEV_BCACHE_WRITE;
-	return label_scan_open(dev);
+	return label_scan_open(cmd, dev);
 }
 
-int label_scan_reopen_rw(struct device *dev)
+int label_scan_reopen_rw(struct cmd_context *cmd, struct device *dev)
 {
 	const char *name;
 	int flags = 0;
@@ -1811,7 +1977,7 @@ int label_scan_reopen_rw(struct device *dev)
 			return 0;
 		}
 		dev->flags |= DEV_BCACHE_WRITE;
-		return _scan_dev_open(dev);
+		return _scan_dev_open(cmd, dev);
 	}
 
 	if ((dev->flags & DEV_BCACHE_WRITE))
@@ -1861,7 +2027,7 @@ int label_scan_reopen_rw(struct device *dev)
 	return 1;
 }
 
-bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
+bool dev_read_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, void *data)
 {
 	if (!scan_bcache) {
 		/* Should not happen */
@@ -1871,7 +2037,7 @@ bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 
 	if (dev->bcache_di < 0) {
 		/* This is not often needed. */
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for reading at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;
@@ -1888,7 +2054,7 @@ bool dev_read_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 
 }
 
-bool dev_write_bytes(struct device *dev, uint64_t start, size_t len, void *data)
+bool dev_write_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, void *data)
 {
 	if (test_mode())
 		return true;
@@ -1906,13 +2072,13 @@ bool dev_write_bytes(struct device *dev, uint64_t start, size_t len, void *data)
 		_scan_dev_close(dev);
 
 		dev->flags |= DEV_BCACHE_WRITE;
-		(void) label_scan_open(dev); /* checked later */
+		(void) label_scan_open(cmd, dev); /* checked later */
 	}
 
 	if (dev->bcache_di < 0) {
 		/* This is not often needed. */
 		dev->flags |= DEV_BCACHE_WRITE;
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for writing at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;
@@ -1947,12 +2113,12 @@ void dev_invalidate(struct device *dev)
 	bcache_invalidate_di(scan_bcache, dev->bcache_di);
 }
 
-bool dev_write_zeros(struct device *dev, uint64_t start, size_t len)
+bool dev_write_zeros(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len)
 {
-	return dev_set_bytes(dev, start, len, 0);
+	return dev_set_bytes(cmd, dev, start, len, 0);
 }
 
-bool dev_set_bytes(struct device *dev, uint64_t start, size_t len, uint8_t val)
+bool dev_set_bytes(struct cmd_context *cmd, struct device *dev, uint64_t start, size_t len, uint8_t val)
 {
 	bool rv;
 
@@ -1974,7 +2140,7 @@ bool dev_set_bytes(struct device *dev, uint64_t start, size_t len, uint8_t val)
 	if (dev->bcache_di == -1) {
 		/* This is not often needed. */
 		dev->flags |= DEV_BCACHE_WRITE;
-		if (!label_scan_open(dev)) {
+		if (!label_scan_open(cmd, dev)) {
 			log_error("Error opening device %s for writing at %llu length %u.",
 				  dev_name(dev), (unsigned long long)start, (uint32_t)len);
 			return false;

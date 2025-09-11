@@ -34,13 +34,13 @@
 				- MD_RESERVED_SECTORS)
 #define MD_MAX_SYSFS_SIZE 64
 
-static int _dev_has_md_magic(struct device *dev, uint64_t sb_offset)
+static int _dev_has_md_magic(struct cmd_context *cmd, struct device *dev, uint64_t sb_offset)
 {
 	uint32_t md_magic;
 
 	/* Version 1 is little endian; version 0.90.0 is machine endian */
 
-	if (!dev_read_bytes(dev, sb_offset, sizeof(uint32_t), &md_magic))
+	if (!dev_read_bytes(cmd, dev, sb_offset, sizeof(uint32_t), &md_magic))
 		return_0;
 
 	if ((md_magic == MD_SB_MAGIC) ||
@@ -54,7 +54,7 @@ static int _dev_has_md_magic(struct device *dev, uint64_t sb_offset)
 #define IMSM_SIGNATURE "Intel Raid ISM Cfg Sig. "
 #define IMSM_SIG_LEN (sizeof(IMSM_SIGNATURE) - 1)
 
-static int _dev_has_imsm_magic(struct device *dev, uint64_t devsize_sectors)
+static int _dev_has_imsm_magic(struct cmd_context *cmd, struct device *dev, uint64_t devsize_sectors)
 {
 	char imsm_signature[IMSM_SIG_LEN];
 	uint64_t off;
@@ -69,7 +69,7 @@ static int _dev_has_imsm_magic(struct device *dev, uint64_t devsize_sectors)
 	else
 		off = (devsize_sectors * 512) - 1024;
 
-	if (!dev_read_bytes(dev, off, IMSM_SIG_LEN, imsm_signature))
+	if (!dev_read_bytes(cmd, dev, off, IMSM_SIG_LEN, imsm_signature))
 		return_0;
 
 	if (!memcmp(imsm_signature, IMSM_SIGNATURE, IMSM_SIG_LEN))
@@ -87,7 +87,7 @@ struct ddf_header {
 	char padding[472];
 };
 
-static int _dev_has_ddf_magic(struct device *dev, uint64_t devsize_sectors, uint64_t *sb_offset)
+static int _dev_has_ddf_magic(struct cmd_context *cmd, struct device *dev, uint64_t devsize_sectors, uint64_t *sb_offset)
 {
 	struct ddf_header hdr;
 	uint32_t crc, our_crc;
@@ -100,7 +100,7 @@ static int _dev_has_ddf_magic(struct device *dev, uint64_t devsize_sectors, uint
 	/* 512 bytes before the end of device (from libblkid) */
 	off = ((devsize_bytes / 0x200) - 1) * 0x200;
 
-	if (!dev_read_bytes(dev, off, 512, &hdr))
+	if (!dev_read_bytes(cmd, dev, off, 512, &hdr))
 		return_0;
 
 	if ((hdr.magic == htobe32(DDF_MAGIC)) ||
@@ -123,7 +123,7 @@ static int _dev_has_ddf_magic(struct device *dev, uint64_t devsize_sectors, uint
 	/* 128KB before the end of device (from libblkid) */
 	off = ((devsize_bytes / 0x200) - 257) * 0x200;
 
-	if (!dev_read_bytes(dev, off, 512, &hdr))
+	if (!dev_read_bytes(cmd, dev, off, 512, &hdr))
 		return_0;
 
 	if ((hdr.magic == htobe32(DDF_MAGIC)) ||
@@ -174,7 +174,7 @@ static int _dev_is_md_component_udev(struct device *dev)
 /*
  * Returns -1 on error
  */
-static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_found, int full)
+static int _dev_is_md_component_native(struct cmd_context *cmd, struct device *dev, uint64_t *offset_found, int full)
 {
 	uint64_t size, sb_offset = 0;
 	int ret;
@@ -206,7 +206,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 	 * md superblock version 1.1 at offset 0 from start
 	 */
 
-	if (_dev_has_md_magic(dev, 0)) {
+	if (_dev_has_md_magic(cmd, dev, 0)) {
 		log_debug_devs("Found md magic number at offset 0 of %s.", dev_name(dev));
 		ret = 1;
 		goto out;
@@ -216,7 +216,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 	 * md superblock version 1.2 at offset 4KB from start
 	 */
 
-	if (_dev_has_md_magic(dev, 4096)) {
+	if (_dev_has_md_magic(cmd, dev, 4096)) {
 		log_debug_devs("Found md magic number at offset 4096 of %s.", dev_name(dev));
 		ret = 1;
 		goto out;
@@ -238,7 +238,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 
 	sb_offset = MD_NEW_SIZE_SECTORS(size) << SECTOR_SHIFT;
 
-	if (_dev_has_md_magic(dev, sb_offset)) {
+	if (_dev_has_md_magic(cmd, dev, sb_offset)) {
 		log_debug_devs("Found md magic number at offset %llu of %s.", (unsigned long long)sb_offset, dev_name(dev));
 		ret = 1;
 		goto out;
@@ -250,7 +250,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 
 	sb_offset = ((size - 8 * 2) & ~(4 * 2 - 1ULL)) << SECTOR_SHIFT;
 
-	if (_dev_has_md_magic(dev, sb_offset)) {
+	if (_dev_has_md_magic(cmd, dev, sb_offset)) {
 		log_debug_devs("Found md magic number at offset %llu of %s.", (unsigned long long)sb_offset, dev_name(dev));
 		ret = 1;
 		goto out;
@@ -260,7 +260,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 	 * md imsm superblock 1K from end of device
 	 */
 
-	if (_dev_has_imsm_magic(dev, size)) {
+	if (_dev_has_imsm_magic(cmd, dev, size)) {
 		log_debug_devs("Found md imsm magic number at offset %llu of %s.", (unsigned long long)sb_offset, dev_name(dev));
 		sb_offset = 1024;
 		ret = 1;
@@ -271,7 +271,7 @@ static int _dev_is_md_component_native(struct device *dev, uint64_t *offset_foun
 	 * md ddf superblock 512 bytes from end, or 128KB from end
 	 */
 
-	if (_dev_has_ddf_magic(dev, size, &sb_offset)) {
+	if (_dev_has_ddf_magic(cmd, dev, size, &sb_offset)) {
 		log_debug_devs("Found md ddf magic number at offset %llu of %s.", (unsigned long long)sb_offset, dev_name(dev));
 		ret = 1;
 		goto out;
@@ -287,7 +287,7 @@ out:
 
 int dev_is_md_component(struct cmd_context *cmd, struct device *dev, uint64_t *offset_found, int full)
 {
-	if (_dev_is_md_component_native(dev, offset_found, full) == 1)
+	if (_dev_is_md_component_native(cmd, dev, offset_found, full) == 1)
 		goto found;
 
 	if (external_device_info_source() == DEV_EXT_UDEV) {

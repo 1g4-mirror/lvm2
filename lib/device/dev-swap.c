@@ -55,7 +55,7 @@ int dev_is_swap(struct cmd_context *cmd, struct device *dev, uint64_t *offset_fo
 			continue;
 		if (size < (page >> SECTOR_SHIFT))
 			break;
-		if (!dev_read_bytes(dev, page - SIGNATURE_SIZE, SIGNATURE_SIZE, buf)) {
+		if (!dev_read_bytes(cmd, dev, page - SIGNATURE_SIZE, SIGNATURE_SIZE, buf)) {
 			ret = -1;
 			break;
 		}

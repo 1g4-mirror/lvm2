@@ -73,7 +73,7 @@ static void _search_devs_for_pvids(struct cmd_context *cmd, struct dm_list *sear
 		int has_pvid;
 
 		/* sets dev->pvid if an lvm label with pvid is found */
-		if (!label_read_pvid(devl->dev, &has_pvid))
+		if (!label_read_pvid(cmd, devl->dev, &has_pvid))
 			continue;
 		if (!has_pvid)
 			continue;
@@ -640,7 +640,7 @@ int lvmdevices(struct cmd_context *cmd, int argc, char **argv)
 				continue;
 			dev = du->dev;
 
-			if (!label_read_pvid(dev, NULL))
+			if (!label_read_pvid(cmd, dev, NULL))
 				continue;
 
 			/*
@@ -814,7 +814,7 @@ int lvmdevices(struct cmd_context *cmd, int argc, char **argv)
 		 * (it's ok if the device is not a PV and has no PVID)
 		 */
 		label_scan_setup_bcache();
-		if (!label_read_pvid(dev, NULL)) {
+		if (!label_read_pvid(cmd, dev, NULL)) {
 			log_error("Failed to read %s.", devname);
 			goto bad;
 		}

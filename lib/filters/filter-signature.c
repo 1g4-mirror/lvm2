@@ -35,7 +35,7 @@ static int _ignore_signature(struct cmd_context *cmd, struct dev_filter *f __att
 
 	memset(buf, 0, BUFSIZE);
 
-	if (!dev_read_bytes(dev, 0, BUFSIZE, buf)) {
+	if (!dev_read_bytes(cmd, dev, 0, BUFSIZE, buf)) {
 		log_debug_devs("%s: Skipping: error in signature detection",
 			       dev_name(dev));
 		ret = 0;

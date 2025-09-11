@@ -132,6 +132,11 @@ struct dev_use_list {
 	struct dev_use *du;
 };
 
+struct dev_lock {
+	struct device *dev;
+	unsigned count;
+};
+
 /*
  * All devices in LVM will be represented by one of these.
  * pointer comparisons are valid.
@@ -158,6 +163,7 @@ struct device {
 	uint64_t size;
 	uint64_t end;
 	struct dev_ext ext;
+	struct dev_lock lock;
 	const char *duplicate_prefer_reason;
 
 	const char *vgid; /* if device is an LV */

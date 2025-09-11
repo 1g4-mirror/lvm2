@@ -190,13 +190,14 @@ static void _xlate_mdah(struct mda_header *mdah)
 	}
 }
 
-static int _raw_read_mda_header(struct mda_header *mdah, struct device_area *dev_area,
-				int primary_mda, uint32_t ignore_bad_fields, uint32_t *bad_fields)
+static int _raw_read_mda_header(struct cmd_context *cmd, struct mda_header *mdah,
+				struct device_area *dev_area, int primary_mda,
+				uint32_t ignore_bad_fields, uint32_t *bad_fields)
 {
 	log_debug_metadata("Reading mda header sector from %s at %llu.",
 			   dev_name(dev_area->dev), (unsigned long long)dev_area->start);
 
-	if (!dev_read_bytes(dev_area->dev, dev_area->start, MDA_HEADER_SIZE, mdah)) {
+	if (!dev_read_bytes(cmd, dev_area->dev, dev_area->start, MDA_HEADER_SIZE, mdah)) {
 		log_error("Failed to read metadata area header on %s at %llu.",
 			  dev_name(dev_area->dev), (unsigned long long)dev_area->start);
 		*bad_fields |= BAD_MDA_READ;
@@ -254,7 +255,7 @@ struct mda_header *raw_read_mda_header(const struct format_type *fmt,
 		return NULL;
 	}
 
-	if (!_raw_read_mda_header(mdah, dev_area, primary_mda, ignore_bad_fields, bad_fields)) {
+	if (!_raw_read_mda_header(fmt->cmd, mdah, dev_area, primary_mda, ignore_bad_fields, bad_fields)) {
 		dm_pool_free(fmt->cmd->mem, mdah);
 		return NULL;
 	}
@@ -277,7 +278,7 @@ static int _raw_write_mda_header(const struct format_type *fmt,
 
 	dev_set_last_byte(dev, start_byte + MDA_HEADER_SIZE);
 
-	if (!dev_write_bytes(dev, start_byte, MDA_HEADER_SIZE, mdah)) {
+	if (!dev_write_bytes(fmt->cmd, dev, start_byte, MDA_HEADER_SIZE, mdah)) {
 		log_error("Failed to write mda header to %s.", dev_name(dev));
 		return 0;
 	}
@@ -961,7 +962,7 @@ static int _vg_write_raw(struct format_instance *fid, struct volume_group *vg,
 			   (unsigned long long)write1_size,
 			   (unsigned long long)write2_size);
 
-	if (!dev_write_bytes(mdac->area.dev, write1_start, (size_t)write1_size, write_buf)) {
+	if (!dev_write_bytes(fid->fmt->cmd, mdac->area.dev, write1_start, (size_t)write1_size, write_buf)) {
 		log_error("Failed to write metadata to %s.", devname);
 		goto out;
 	}
@@ -972,7 +973,7 @@ static int _vg_write_raw(struct format_instance *fid, struct volume_group *vg,
 				   (unsigned long long)write2_start,
 				   (unsigned long long)write2_size);
 
-		if (!dev_write_bytes(mdac->area.dev, write2_start, write2_size,
+		if (!dev_write_bytes(fid->fmt->cmd, mdac->area.dev, write2_start, write2_size,
 				     write_buf + new_size - new_wrap)) {
 			log_error("Failed to write metadata wrap to %s", devname);
 			goto out;
@@ -1202,7 +1203,7 @@ static int _vg_remove_raw(struct format_instance *fid, struct volume_group *vg,
 	 * Just to print the warning?
 	 */
 
-	if (!_raw_read_mda_header(mdah, &mdac->area, mda_is_primary(mda), 0, &bad_fields))
+	if (!_raw_read_mda_header(fid->fmt->cmd, mdah, &mdac->area, mda_is_primary(mda), 0, &bad_fields))
 		log_warn("WARNING: Removing metadata location on %s with bad mda header.",
 			  dev_name(mdac->area.dev));
 
@@ -2455,7 +2456,7 @@ static int _text_pv_add_metadata_area(const struct format_type *fmt,
 
 		zero_len = (mda_size > wipe_size) ? wipe_size : mda_size;
 
-		if (!dev_write_zeros(pv->dev, mda_start, zero_len)) {
+		if (!dev_write_zeros(fmt->cmd, pv->dev, mda_start, zero_len)) {
 			log_error("Failed to wipe new metadata area on %s at %llu len %llu",
 				   pv_dev_name(pv),
 				   (unsigned long long)mda_start,

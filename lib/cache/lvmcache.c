@@ -1385,7 +1385,7 @@ int lvmcache_label_reopen_vg_rw(struct cmd_context *cmd, const char *vgname, con
 		return_0;
 
 	dm_list_iterate_items(info, &vginfo->infos) {
-		if (!label_scan_reopen_rw(info->dev))
+		if (!label_scan_reopen_rw(cmd, info->dev))
 			return_0;
 	}
 
