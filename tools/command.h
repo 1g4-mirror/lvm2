@@ -37,6 +37,7 @@ struct command_name {
 	command_fn fn; /* old style */
 	unsigned int flags;
 	uint16_t lvm_command_enum; /* as declared in commands.h with _COMMAND */
+	cmd_category_t category;
 };
 
 struct command_name_args {

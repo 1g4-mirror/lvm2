@@ -96,4 +96,46 @@ enum {
 
 #include "command-count.h" /* defines COMMAND_COUNT */
 
+typedef enum {
+	CATEGORY_CORE,
+	CATEGORY_BUILTIN,
+	CATEGORY_CONCEPTS,
+	CATEGORY_CONFIGURATION,
+	CATEGORY_DEVICES_FILE,
+	CATEGORY_PV,
+	CATEGORY_VG,
+	CATEGORY_LV,
+	CATEGORY_REPORTING,
+	CATEGORY_SCANNING,
+	CATEGORY_CHECK,
+	CATEGORY_DAEMONS,
+	CATEGORY_UTILITY,
+	CATEGORY_DM,
+	CATEGORY_OTHER,
+	CATEGORY_COUNT,
+} cmd_category_t;
+
+struct cmd_category_info {
+	const char *name;
+	const char *desc;
+};
+
+static const struct cmd_category_info cmd_categories[] = {
+	[CATEGORY_CORE]          = {"CATEGORY_CORE", "Core LVM Commands"},
+	[CATEGORY_BUILTIN]       = {"CATEGORY_BUILTIN", "LVM Builtin Commands"},
+	[CATEGORY_CONCEPTS]      = {"CATEGORY_CONCEPTS", "Concepts"},
+	[CATEGORY_CONFIGURATION] = {"CATEGORY_CONFIGURATION", "Configuration"},
+	[CATEGORY_DEVICES_FILE]  = {"CATEGORY_DEVICES_FILE", "Devices File Management"},
+	[CATEGORY_PV]            = {"CATEGORY_PV", "Physical Volume Commands"},
+	[CATEGORY_VG]            = {"CATEGORY_VG", "Volume Group Commands"},
+	[CATEGORY_LV]            = {"CATEGORY_LV", "Logical Volume Commands"},
+	[CATEGORY_REPORTING]     = {"CATEGORY_REPORTING", "Reporting Commands"},
+	[CATEGORY_SCANNING]      = {"CATEGORY_SCANNING", "Scanning Commands"},
+	[CATEGORY_CHECK]         = {"CATEGORY_CHECK", "Check Commands"},
+	[CATEGORY_UTILITY]       = {"CATEGORY_UTILITY", "Utility Commands"},
+	[CATEGORY_DAEMONS]       = {"CATEGORY_DAEMONS", "Daemons"},
+	[CATEGORY_OTHER]         = {"CATEGORY_OTHER", "Other"},
+	[CATEGORY_DM]            = {"CATEGORY_DM", "Device-Mapper Commands"},
+};
+
 #endif /* _LVM_COMMAND_ENUMS_H */
