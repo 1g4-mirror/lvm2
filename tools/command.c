@@ -90,7 +90,7 @@ static const struct cmd_name cmd_names[CMD_COUNT + 1] = {
 #ifdef MAN_PAGE_GENERATOR
 
 static const struct command_name command_names[] = {
-#define xx(a, b, c...) { # a, b, NULL, c, a ## _COMMAND },
+#define xx(a, b, c, d, ...) { # a, b, NULL, c, a ## _COMMAND, d},
 #include "commands.h"
 #undef xx
 };
@@ -99,7 +99,7 @@ static struct command commands[COMMAND_COUNT];
 #else /* MAN_PAGE_GENERATOR */
 
 const struct command_name command_names[] = {
-#define xx(a, b, c...) { # a, b, a, c, a ## _COMMAND },
+#define xx(a, b, c, d, ...) { # a, b, a, c, a ## _COMMAND, d},
 #include "commands.h"
 #undef xx
 };
