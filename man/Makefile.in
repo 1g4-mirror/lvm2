@@ -35,6 +35,7 @@ LVMDBUSDMAN = lvmdbusd.8
 MAN5=lvm.conf.5
 MAN7=lvmsystemid.7 lvmreport.7 lvmraid.7 lvmautoactivation.7
 MAN7INDEX=lvm-index.7
+MAN7CATEGORIES=lvm-categories.7
 
 MAN8=lvm.8 lvmdump.8 lvm-fullreport.8 lvm-lvpoll.8 \
      lvcreate.8 lvchange.8 lvmconfig.8 lvconvert.8 lvdisplay.8 \
@@ -122,6 +123,7 @@ include $(top_builddir)/make.tmpl
 
 CLEAN_TARGETS+=$(MAN5) $(MAN7) \
 	$(MAN7INDEX) $(MAN7INDEX:%.7=%.7_gen) \
+	$(MAN7CATEGORIES) $(MAN7CATEGORIES:%.7=%.7_gen) \
        	$(MAN8) $(MAN8SO) \
 	$(MAN8:%.8=%.8_gen)$(MAN8CLUSTER) $(MAN8DM) $(TESTMAN)
 
@@ -131,11 +133,11 @@ all: man device-mapper
 
 device-mapper: $(MAN8DM)
 
-man: $(MAN5) $(MAN7) $(MAN7INDEX) $(MAN8) $(MAN8SO) $(MAN8CLUSTER)
+man: $(MAN5) $(MAN7) $(MAN7INDEX) $(MAN7CATEGORIES) $(MAN8) $(MAN8SO) $(MAN8CLUSTER)
 
 all_man: man
 
-$(MAN5) $(MAN7) $(MAN7INDEX) $(MAN8) $(MAN8SO) $(MAN8DM) $(MAN8CLUSTER): Makefile
+$(MAN5) $(MAN7) $(MAN7INDEX) $(MAN7CATEGORIES) $(MAN8) $(MAN8SO) $(MAN8DM) $(MAN8CLUSTER): Makefile
 
 $(MANGENERATOR):
 	$(SHOW) "    [MAKE] $<"
@@ -267,6 +269,11 @@ $(MAN7INDEX): $(srcdir)/$(MAN7INDEX)_gen
 	$(Q) $(SUBSTVARS)
 	$(Q) $(ESCAPEHYPHEN)
 
+$(MAN7CATEGORIES): $(srcdir)/$(MAN7CATEGORIES)_gen
+	$(SHOW) "    [INDEX] $@"
+	$(Q) $(SUBSTVARS)
+	$(Q) $(ESCAPEHYPHEN)
+
 $(MAN8SO): lvmconfig.8
 	$(SHOW) "    [MAN] $@"
 	$(Q) echo ".so $<" > $@
@@ -276,7 +283,7 @@ install_man5: $(MAN5)
 	$(Q) $(INSTALL) -d $(MAN5DIR)
 	$(Q) $(INSTALL_DATA) $^ $(MAN5DIR)/
 
-install_man7: $(MAN7) $(MAN7INDEX)
+install_man7: $(MAN7) $(MAN7INDEX) $(MAN7CATEGORIES)
 	$(SHOW) "    [INSTALL] $^"
 	$(Q) $(INSTALL) -d $(MAN7DIR)
 	$(Q) $(INSTALL_DATA) $^ $(MAN7DIR)/
@@ -327,6 +334,22 @@ $(MAN7INDEX)_gen: $(MANGENERATOR)
 		done; \
 		if [ -n "$$INPUT_FILES" ]; then \
 			$(MANGENERATOR) --index $$INPUT_FILES ; \
+		fi \
+	) > $@
+
+$(MAN7CATEGORIES)_gen: $(MANGENERATOR)
+	$(SHOW) "    [GENERATE] $@"
+	$(Q) set -e ; ( \
+		INPUT_FILES="" ;\
+		for man in $(MAN5) $(MAN) $(MAN8) $(MAN8SO) $(MAN8DM) $(MAN8CLUSTER); do \
+			if [ -f $(srcdir)/$${man}_des ]; then \
+				INPUT_FILES="$$INPUT_FILES $(srcdir)/$${man}_des" ; \
+			elif [ -f $(srcdir)/$${man}_main ]; then \
+				INPUT_FILES="$$INPUT_FILES $(srcdir)/$${man}_main" ; \
+			fi \
+		done; \
+		if [ -n "$$INPUT_FILES" ]; then \
+			$(MANGENERATOR) --categories $$INPUT_FILES ; \
 		fi \
 	) > $@
 
