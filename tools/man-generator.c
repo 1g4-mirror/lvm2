@@ -1453,6 +1453,14 @@ static int _compare_cname_name(const void *a, const void *b)
 	return strcmp((*cname_a)->name, (*cname_b)->name);
 }
 
+static int _compare_cname_category(const void *a, const void *b)
+{
+	const struct command_name **cname_a = (const struct command_name **)a;
+	const struct command_name **cname_b = (const struct command_name **)b;
+
+	return ((*cname_a)->category - (*cname_b)->category);
+}
+
 static size_t _str_has_suffix(const char *str, const char *suffix)
 {
 	size_t str_len = strlen(str);
@@ -1505,6 +1513,24 @@ out:
 	return r;
 }
 
+static cmd_category_t _get_category(const char *line)
+{
+	cmd_category_t i;
+	size_t len;
+
+	if (!strncmp(line, "\\\"CATEGORY_", 11)) {
+		line += 2;
+		for (i = 0; i < CATEGORY_COUNT; i++) {
+			len = strlen(cmd_categories[i].name);
+			if (!strncmp(line, cmd_categories[i].name, len) &&
+			    (line[len] == '\n' || line[len] == '\0'))
+				return i;
+		}
+	}
+
+	return CATEGORY_OTHER;
+}
+
 /*
  * For *.*_main files (static man pages), extract command name and
  * description directly from the text in the file under the .SH NAME section.
@@ -1514,6 +1540,7 @@ static int _get_main_index_cname(const char *path, const char *main, struct comm
 	FILE *f;
 	char line[1024];
 	int in_name = 0;
+	int first_line = 1;
 	char *delim;
 	size_t len;
 
@@ -1529,6 +1556,11 @@ static int _get_main_index_cname(const char *path, const char *main, struct comm
 	}
 
 	while (fgets(line, sizeof(line), f)) {
+		if (first_line) {
+			/* Category is always written in the first line. */
+			(*cname)->category = _get_category(line);
+			first_line = 0;
+		}
 		/* Look for .SH NAME section */
 		if (in_name) {
 			if (!strncmp(line, ".SH ", 4))
@@ -1580,30 +1612,15 @@ static int _get_index_cname(const char *path, struct command_name **cname)
 	return _get_main_index_cname(path, name, cname);
 }
 
-static int _print_index(char **files, int count)
+static void _print_alphabetical_index(struct command_name **cnames, int count)
 {
-	struct command_name **cnames;
 	char current_letter = 0;
 	int i;
-	int r = 0;
-
-	if (!(cnames = calloc(count, sizeof(struct command_name *)))) {
-		log_error("Failed to allocate memory for index items.");
-		goto out;
-	}
-
-	for (i = 0; i < count; i++) {
-		if (!_get_index_cname(files[i], &cnames[i])) {
-			log_error("Failed to extract name and description from %s.", files[i]);
-			goto out;
-		}
-	}
 
 	/* Sort index items alphabetically by name. */
 	qsort(cnames, count, sizeof(struct command_name *), _compare_cname_name);
 
 	_print_header("LVM-INDEX", 7);
-
 	printf(".\n.SH NAME\n.\n");
 	printf("lvm-index \\(em LVM command index\n");
 	printf(".\n.SH DESCRIPTION\n.\n");
@@ -1635,6 +1652,77 @@ static int _print_index(char **files, int count)
 	if (current_letter != 0) {
 		printf(".RE\n");
 	}
+}
+
+static void _print_category_index(struct command_name **cnames, int count)
+{
+	int i, j;
+	cmd_category_t current_category = CATEGORY_OTHER;
+	int category_start = 0;
+
+	/* Sort by category first */
+	qsort(cnames, count, sizeof(struct command_name *), _compare_cname_category);
+
+	_print_header("LVM-CATEGORIES", 7);
+	printf(".\n.SH NAME\n.\n");
+	printf("lvm-categories \\(em LVM command categories\n");
+	printf(".\n.SH DESCRIPTION\n.\n");
+	printf("This page provides categorized list of LVM manual pages.\n");
+	printf(".\n.SH CATEGORIES\n.\n");
+
+	/* Group by category and sort alphabetically within each category */
+	for (i = 0; i <= count; i++) {
+		cmd_category_t category = (i < count) ? cnames[i]->category : CATEGORY_OTHER + 1;
+
+		/* If category changed or we reached the end, process the previous category */
+		if (category != current_category && i > 0) {
+			/* Sort the current category alphabetically by name */
+			qsort(&cnames[category_start], i - category_start,
+			      sizeof(struct command_name *), _compare_cname_name);
+
+			/* Print category header */
+			printf(".SH %s\n", cmd_categories[current_category].desc);
+			printf(".RS\n");
+
+			/* Print all commands in this category */
+			for (j = category_start; j < i; j++) {
+				printf(".TP\n");
+				printf("\\fB%s\\fP", cnames[j]->name);
+				if (cnames[j]->desc[0])
+					printf(" \\(em %s", cnames[j]->desc);
+				printf("\n");
+			}
+
+			printf(".RE\n");
+			category_start = i;
+		}
+
+		current_category = category;
+	}
+}
+
+static int _print_index(char **files, int count, int categories)
+{
+	struct command_name **cnames;
+	int i;
+	int r = 0;
+
+	if (!(cnames = calloc(count, sizeof(struct command_name *)))) {
+		log_error("Failed to allocate memory for index items.");
+		goto out;
+	}
+
+	for (i = 0; i < count; i++) {
+		if (!_get_index_cname(files[i], &cnames[i])) {
+			log_error("Failed to extract name and description from %s.", files[i]);
+			goto out;
+		}
+	}
+
+	if (categories)
+		_print_category_index(cnames, count);
+	else
+		_print_alphabetical_index(cnames, count);
 
 	printf(".SH SEE ALSO\n");
 	printf("\\fBlvm\\fP(8), \\fBlvm.conf\\fP(5), \\fBlvmdump\\fP(8)\n");
@@ -1875,7 +1963,9 @@ int main(int argc, char *argv[])
 	int primary = 0;
 	int secondary = 0;
 	int check = 0;
+	int group_psc = 0;
 	int index = 0;
+	int categories = 0;
 	char **index_files = NULL;
 	int index_file_count = 0;
 	int i;
@@ -1887,6 +1977,7 @@ int main(int argc, char *argv[])
 		{"secondary", no_argument, 0, 's' },
 		{"check", no_argument, 0, 'c' },
 		{"index", no_argument, 0, 'i' },
+		{"categories", no_argument, 0, 'a'},
 		{0, 0, 0, 0 }
 	};
 
@@ -1899,7 +1990,7 @@ int main(int argc, char *argv[])
 		int c;
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "psci", long_options, &option_index);
+		c = getopt_long(argc, argv, "pscia", long_options, &option_index);
 		if (c == -1)
 			break;
 
@@ -1918,18 +2009,24 @@ int main(int argc, char *argv[])
 		case 'i':
 			index = 1;
 			break;
+		case 'a':
+			categories = 1;
+			break;
 		}
 	}
 
-	if ((!primary && !secondary && !check && !index) ||
-	     (index && (primary || secondary || check))) {
-		log_error("Usage: %s --primary|--secondary|--check <command> [/path/to/description-file] | --index file1 file2 ...", argv[0]);
+	group_psc = primary || secondary || check;
+
+	if ((!group_psc && !index && !categories) ||
+	     (index && group_psc) || (categories && group_psc) || (index && categories)) {
+		log_error("Usage: %s --primary|--secondary|--check <command> [/path/to/description-file] "
+			  "| --index file1 file2 ... | --categories file1 file2 ...", argv[0]);
 		goto out_free;
 	}
 
-	if (index) {
+	if (index || categories) {
 		if (optind >= argc) {
-			log_error("No files specified for indexing.");
+			log_error("No files specified for %s.", index ? "indexing" : "categorization");
 			goto out_free;
 		}
 
@@ -1969,8 +2066,8 @@ int main(int argc, char *argv[])
 		_print_man_secondary(cmdname);
 	} else if (check) {
 		r = _check_overlap();
-	} else if (index) {
-		r = _print_index(index_files, index_file_count);
+	} else if (index || categories) {
+		r = _print_index(index_files, index_file_count, categories);
 	}
 
 out_free:
