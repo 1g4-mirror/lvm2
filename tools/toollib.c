@@ -6186,7 +6186,7 @@ do_command:
 		log_verbose("Set up physical volume for \"%s\" with %" PRIu64
 			    " available sectors.", pv_name, pv_size(pv));
 
-		if (!label_remove(pv->dev)) {
+		if (!label_remove(cmd, pv->dev)) {
 			log_error("Failed to wipe existing label on %s.", pv_name);
 			dm_list_move(&pp->arg_fail, &pd->list);
 			continue;
@@ -6195,7 +6195,7 @@ do_command:
 		if (pp->zero) {
 			log_verbose("Zeroing start of device %s.", pv_name);
 
-			if (!dev_write_zeros(pv->dev, 0, 2048)) {
+			if (!dev_write_zeros(cmd, pv->dev, 0, 2048)) {
 				log_error("%s not wiped: aborting.", pv_name);
 				dm_list_move(&pp->arg_fail, &pd->list);
 				continue;
@@ -6221,7 +6221,7 @@ do_command:
 	 * Remove PVs from devices for pvremove.
 	 */
 	dm_list_iterate_items_safe(pd, pd2, &pp->arg_remove) {
-		if (!label_remove(pd->dev)) {
+		if (!label_remove(cmd, pd->dev)) {
 			log_error("Failed to wipe existing label(s) on %s.", pd->name);
 			dm_list_move(&pp->arg_fail, &pd->list);
 			continue;
@@ -6237,7 +6237,7 @@ do_command:
 	 * Special case: pvremove duplicate PVs (also see above).
 	 */
 	dm_list_iterate_items_safe(pd, pd2, &remove_duplicates) {
-		if (!label_remove(pd->dev)) {
+		if (!label_remove(cmd, pd->dev)) {
 			log_error("Failed to wipe existing label(s) on %s.", pd->name);
 			dm_list_move(&pp->arg_fail, &pd->list);
 			continue;

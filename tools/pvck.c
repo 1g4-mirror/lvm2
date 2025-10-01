@@ -371,13 +371,14 @@ static struct devicefile *get_devicefile(struct cmd_context *cmd, const char *pa
 	return def;
 }
 
-static bool _read_bytes(struct device *dev, struct devicefile *def, uint64_t start, size_t len, void *data)
+static bool _read_bytes(struct cmd_context *cmd, struct device *dev, struct devicefile *def,
+			uint64_t start, size_t len, void *data)
 {
 	off_t off;
 	ssize_t rv;
 
 	if (dev)
-		return dev_read_bytes(dev, start, len, data);
+		return dev_read_bytes(cmd, dev, start, len, data);
 
 	if (!def)
 		return false;
@@ -839,7 +840,8 @@ static int _dump_raw_locn(struct device *dev, struct devicefile *def, int print_
 	return 1;
 }
 
-static int _dump_meta_area(struct device *dev, struct devicefile *def, const char *tofile,
+static int _dump_meta_area(struct cmd_context *cmd, struct device *dev,
+			   struct devicefile *def, const char *tofile,
 			   uint64_t mda_offset, uint64_t mda_size)
 {
 	FILE *fp;
@@ -852,7 +854,7 @@ static int _dump_meta_area(struct device *dev, struct devicefile *def, const cha
 	if (!(meta_buf = zalloc(mda_size + 1)))
 		return_0;
 
-	if (!_read_bytes(dev, def, mda_offset, mda_size, meta_buf)) {
+	if (!_read_bytes(cmd, dev, def, mda_offset, mda_size, meta_buf)) {
 		log_print("CHECK: failed to read metadata area at offset %llu size %llu",
 			  (unsigned long long)mda_offset, (unsigned long long)mda_size);
 		free(meta_buf);
@@ -882,7 +884,7 @@ static int _dump_meta_area(struct device *dev, struct devicefile *def, const cha
 
 /* all sizes and offsets in bytes */
 
-static int _dump_current_text(struct device *dev, struct devicefile *def,
+static int _dump_current_text(struct cmd_context *cmd, struct device *dev, struct devicefile *def,
 			      int print_fields, int print_metadata, const char *tofile,
 			      int mda_num, int rlocn_index,
 			      uint64_t mda_offset, uint64_t mda_size,
@@ -920,7 +922,7 @@ static int _dump_current_text(struct device *dev, struct devicefile *def,
 		off_t offset_b = mda_offset + 512; /* continues after mda_header sector */
 		uint32_t size_b = wrap;
 
-		if (!_read_bytes(dev, def, offset_a, size_a, meta_buf)) {
+		if (!_read_bytes(cmd, dev, def, offset_a, size_a, meta_buf)) {
 			log_print("CHECK: failed to read metadata text at mda_header_%d.raw_locn[%d].offset %llu size %llu part_a %llu %llu", mn, ri,
 				  (unsigned long long)meta_offset, (unsigned long long)meta_size,
 				  (unsigned long long)offset_a, (unsigned long long)size_a);
@@ -928,7 +930,7 @@ static int _dump_current_text(struct device *dev, struct devicefile *def,
 			return 0;
 		}
 
-		if (!_read_bytes(dev, def, offset_b, size_b, meta_buf + size_a)) {
+		if (!_read_bytes(cmd, dev, def, offset_b, size_b, meta_buf + size_a)) {
 			log_print("CHECK: failed to read metadata text at mda_header_%d.raw_locn[%d].offset %llu size %llu part_b %llu %llu", mn, ri,
 				  (unsigned long long)meta_offset, (unsigned long long)meta_size,
 				  (unsigned long long)offset_b, (unsigned long long)size_b);
@@ -936,7 +938,7 @@ static int _dump_current_text(struct device *dev, struct devicefile *def,
 			return 0;
 		}
 	} else {
-		if (!_read_bytes(dev, def, mda_offset + meta_offset, meta_size, meta_buf)) {
+		if (!_read_bytes(cmd, dev, def, mda_offset + meta_offset, meta_size, meta_buf)) {
 			log_print("CHECK: failed to read metadata text at mda_header_%d.raw_locn[%d].offset %llu size %llu", mn, ri,
 				  (unsigned long long)meta_offset, (unsigned long long)meta_size);
 			free(meta_buf);
@@ -1040,7 +1042,7 @@ static int _dump_label_and_pv_header(struct cmd_context *cmd, uint64_t labelsect
 
 	lh_offset = labelsector * 512; /* from start of disk */
 
-	if (!_read_bytes(dev, def, lh_offset, 512, buf)) {
+	if (!_read_bytes(cmd, dev, def, lh_offset, 512, buf)) {
 		log_print("CHECK: failed to read label_header at %llu",
 			  (unsigned long long)lh_offset);
 		return 0;
@@ -1289,7 +1291,7 @@ static int _dump_mda_header(struct cmd_context *cmd, struct settings *set,
 	 * (Why was mda_header magic made only partially printable?)
 	 */
 
-	if (!_read_bytes(dev, def, mda_offset, 512, buf)) {
+	if (!_read_bytes(cmd, dev, def, mda_offset, 512, buf)) {
 		log_print("CHECK: failed to read mda_header at %llu", (unsigned long long)mda_offset);
 		return 0;
 	}
@@ -1309,7 +1311,7 @@ static int _dump_mda_header(struct cmd_context *cmd, struct settings *set,
 		bad++;
 
 	if (print_area) {
-		if (!_dump_meta_area(dev, def, tofile, mda_offset, mda_size))
+		if (!_dump_meta_area(cmd, dev, def, tofile, mda_offset, mda_size))
 			bad++;
 		goto out;
 	}
@@ -1355,7 +1357,9 @@ static int _dump_mda_header(struct cmd_context *cmd, struct settings *set,
 	 * looking at the current copy of metadata referenced by raw_locn
 	 */
 	if (print_metadata <= PRINT_CURRENT) {
-		if (!_dump_current_text(dev, def, print_fields, print_metadata, tofile, mda_num, 0, mda_offset, mda_size, meta_offset, meta_size, meta_checksum))
+		if (!_dump_current_text(cmd, dev, def, print_fields, print_metadata,
+					tofile, mda_num, 0, mda_offset, mda_size,
+					meta_offset, meta_size, meta_checksum))
 			bad++;
 	}
 
@@ -1366,7 +1370,7 @@ static int _dump_mda_header(struct cmd_context *cmd, struct settings *set,
 		if (!(mda_buf = zalloc(mda_size + 1)))
 			goto_out;
 
-		if (!_read_bytes(dev, def, mda_offset, mda_size, mda_buf)) {
+		if (!_read_bytes(cmd, dev, def, mda_offset, mda_size, mda_buf)) {
 			log_print("CHECK: failed to read metadata area at offset %llu size %llu",
 				  (unsigned long long)mda_offset, (unsigned long long)mda_size);
 			bad++;
@@ -1748,7 +1752,7 @@ static int _dump_search(struct cmd_context *cmd, const char *dump, struct settin
 	if (!(buf = zalloc(mda_size + 1)))
 		return_0;
 
-	if (!_read_bytes(dev, def, mda_offset, mda_size, buf)) {
+	if (!_read_bytes(cmd, dev, def, mda_offset, mda_size, buf)) {
 		log_print("CHECK: failed to read metadata area at offset %llu size %llu",
 			   (unsigned long long)mda_offset, (unsigned long long)mda_size);
 		free(buf);
@@ -1929,7 +1933,7 @@ static int _repair_label_header(struct cmd_context *cmd, const char *repair,
 			return 0;
 	}
 
-	if (!dev_read_bytes(dev, lh_offset, 512, buf)) {
+	if (!dev_read_bytes(cmd, dev, lh_offset, 512, buf)) {
 	        log_error("Failed to read label_header at %llu", (unsigned long long)lh_offset);
 	        return 0;
 	}
@@ -1965,7 +1969,7 @@ static int _repair_label_header(struct cmd_context *cmd, const char *repair,
 	    yes_no_prompt("Write new LVM header to %s? ", dev_name(dev)) == 'n')
 		return 0;
 
-	if (!dev_write_bytes(dev, lh_offset, 512, buf)) {
+	if (!dev_write_bytes(cmd, dev, lh_offset, 512, buf)) {
 	        log_error("Failed to write new header");
 	        return 0;
 	}
@@ -2091,7 +2095,7 @@ static int _check_for_mda1(struct cmd_context *cmd, struct device *dev)
 	char buf[512];
 	struct mda_header *mh;
 
-	if (!dev_read_bytes(dev, 4096, 512, buf))
+	if (!dev_read_bytes(cmd, dev, 4096, 512, buf))
 		return_0;
 
 	mh = (struct mda_header *)buf;
@@ -2129,7 +2133,7 @@ static int _check_for_mda2(struct cmd_context *cmd, struct device *dev,
 	if (!(buf = malloc(mda_size)))
 		return_0;
 
-	if (!dev_read_bytes(dev, mda_offset, mda_size, buf))
+	if (!dev_read_bytes(cmd, dev, mda_offset, mda_size, buf))
 		goto fail;
 
 	mh = (struct mda_header *)buf;
@@ -2334,7 +2338,7 @@ static int _repair_pv_header(struct cmd_context *cmd, const char *repair,
 	 * The header sector is read into this buffer.
 	 * This same buffer is modified and written back.
 	 */
-	if (!dev_read_bytes(dev, lh_offset, 512, head_buf)) {
+	if (!dev_read_bytes(cmd, dev, lh_offset, 512, head_buf)) {
 	        log_error("Failed to read label_header at %llu", (unsigned long long)lh_offset);
 		goto fail;
 	}
@@ -2487,7 +2491,7 @@ static int _repair_pv_header(struct cmd_context *cmd, const char *repair,
 	    yes_no_prompt("Write new LVM header to %s? ", dev_name(dev)) == 'n')
 		goto fail;
 
-	if (!dev_write_bytes(dev, lh_offset, 512, head_buf)) {
+	if (!dev_write_bytes(cmd, dev, lh_offset, 512, head_buf)) {
 	        log_error("Failed to write new header");
 		goto fail;
 	}
@@ -2518,7 +2522,7 @@ static int _update_mda(struct cmd_context *cmd, struct metadata_file *mf, struct
 		goto fail;
 	}
 
-	if (!dev_read_bytes(dev, mda_offset, sizeof(buf), buf)) {
+	if (!dev_read_bytes(cmd, dev, mda_offset, sizeof(buf), buf)) {
 		log_print("CHECK: failed to read mda_header_%d at %llu",
 			  mda_num, (unsigned long long)mda_offset);
 		goto fail;
@@ -2564,12 +2568,12 @@ static int _update_mda(struct cmd_context *cmd, struct metadata_file *mf, struct
 	    yes_no_prompt("Write new LVM metadata to %s? ", dev_name(dev)) == 'n')
 		goto fail;
 
-	if (!dev_write_bytes(dev, text_offset, mf->text_size, mf->text_buf)) {
+	if (!dev_write_bytes(cmd, dev, text_offset, mf->text_size, mf->text_buf)) {
 		log_error("Failed to write new mda text");
 		goto fail;
 	}
 
-	if (!dev_write_bytes(dev, mda_offset, 512, buf)) {
+	if (!dev_write_bytes(cmd, dev, mda_offset, 512, buf)) {
 		log_error("Failed to write new mda header");
 		goto fail;
 	}
@@ -3104,7 +3108,7 @@ static int _pvck_mf(struct metadata_file *mf, struct cmd_context *cmd, int argc,
 		 * This buf is not used, but bcache data is used for subsequent
 		 * reads in the filters and by _read_bytes for other disk structs.
 		 */
-		if (!dev_read_bytes(dev, 0, 4096, buf)) {
+		if (!dev_read_bytes(cmd, dev, 0, 4096, buf)) {
 			log_error("Failed to read the first 4096 bytes of device %s.", dev_name(dev));
 			return ECMD_FAILED;
 		}

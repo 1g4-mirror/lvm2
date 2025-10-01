@@ -3623,7 +3623,7 @@ void device_ids_check_serial(struct cmd_context *cmd, struct dm_list *scan_devs,
 		dev = devl->dev;
 		has_pvid = 0;
 
-		err = label_read_pvid(dev, &has_pvid);
+		err = label_read_pvid(cmd, dev, &has_pvid);
 		if (!err || !has_pvid) {
 			log_debug("serial %s no pvid %s", idname, dev_name(devl->dev));
 			dm_list_del(&devl->list);
@@ -4036,7 +4036,7 @@ void device_ids_search(struct cmd_context *cmd, struct dm_list *new_devs,
 		 * Sets has_pvid=1 if the dev has an lvm PVID.
 		 * This loop may look at and skip many non-LVM devices.
 		 */
-		if (!label_read_pvid(dev, &has_pvid))
+		if (!label_read_pvid(cmd, dev, &has_pvid))
 			continue;
 
 		if (!has_pvid)
