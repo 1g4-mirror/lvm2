@@ -17,6 +17,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <getopt.h>
+#include <unistd.h>
 
 
 #define stack
@@ -1231,23 +1232,9 @@ static void _print_cmd_usage_option(const struct command_name *cname,
 	_print_man_all_positions_desc(cname);
 }
 
-static int _print_man(char *name, char *des_file, int secondary)
+static void _print_header(const char *name, unsigned section)
 {
-	const struct command_name *cname;
-	const struct command_name_args *cna = NULL;
-	struct command *cmd, *prev_cmd = NULL;
-	char *lvmname = name;
-	int i, sep = 0;
-
-	if (!strncmp(name, "lvm-", 4)) {
-		name[3] = ' ';
-		name += 4;
-	}
-
-	cname = find_command_name(name);
-
-	printf(".TH %s 8 \"LVM TOOLS #VERSION#\" \"Red Hat, Inc.\"\n.\n",
-	       _upper_command_name(lvmname));
+	printf(".TH %s %u \"LVM TOOLS #VERSION#\" \"Red Hat, Inc.\"\n.\n", name, section);
 
 	/* Postscript rendering is using tabulator with '.ta'
 	 * This works only in 'copy-in' mode otherwise \t does NOT work
@@ -1286,6 +1273,24 @@ static int _print_man(char *name, char *des_file, int secondary)
 	       "\\&\n"
 	       "..\n"
 	       ".\n");
+}
+
+static int _print_man(char *name, char *des_file, int secondary)
+{
+	const struct command_name *cname;
+	const struct command_name_args *cna = NULL;
+	struct command *cmd, *prev_cmd = NULL;
+	char *lvmname = name;
+	int i, sep = 0;
+
+	if (!strncmp(name, "lvm-", 4)) {
+		name[3] = ' ';
+		name += 4;
+	}
+
+	cname = find_command_name(name);
+
+	_print_header(_upper_command_name(name), 8);
 
 	for (i = 0; i < COMMAND_COUNT; i++) {
 
@@ -1438,6 +1443,303 @@ static void _print_opt_list(const char *prefix, int *opt_list, int opt_count)
 		printf(" %s", opt_names[opt_enum].long_opt);
 	}
 	printf("\n");
+}
+
+static int _compare_cname_name(const void *a, const void *b)
+{
+	const struct command_name **cname_a = (const struct command_name **)a;
+	const struct command_name **cname_b = (const struct command_name **)b;
+
+	return strcmp((*cname_a)->name, (*cname_b)->name);
+}
+
+static int _compare_cname_category(const void *a, const void *b)
+{
+	const struct command_name **cname_a = (const struct command_name **)a;
+	const struct command_name **cname_b = (const struct command_name **)b;
+
+	return ((*cname_a)->category - (*cname_b)->category);
+}
+
+static size_t _str_has_suffix(const char *str, const char *suffix)
+{
+	size_t str_len = strlen(str);
+	size_t suffix_len = strlen(suffix);
+	size_t r;
+
+	if (str_len == 0 || suffix_len == 0 || suffix_len >= str_len)
+		return 0;
+
+	r = str_len - suffix_len;
+	if (!memcmp(str + r, suffix, suffix_len))
+		return r;
+
+	return 0;
+}
+
+/*
+ * For *.*_des files (dynamically generated man pages), extract command name from
+ * file name and then get the cname for it. Then get the actual command name and
+ * description from the cname structure.
+ */
+static int _get_des_index_cname(const char *des, struct command_name **cname)
+{
+	char *s, *cmd_name;
+	int r = 0;
+
+	if (!(s = cmd_name = strdup(des))) {
+		log_error("File name strdup failed: %s", des);
+		goto out;
+	}
+
+	if (!(s = strrchr(s, '.'))) {
+		log_error("Unexpected file name: %s.", des);
+		goto out;
+	}
+	*s = '\0';
+
+	s = cmd_name;
+	if (!strncmp(s, "lvm-", 4))
+		s += 4;
+
+	if (!(*cname = (struct command_name *) find_command_name(s))) {
+		log_error("Could not find command for %s.", s);
+		goto out;
+	}
+
+	r = 1;
+out:
+	free(cmd_name);
+	return r;
+}
+
+static cmd_category_t _get_category(const char *line)
+{
+	cmd_category_t i;
+	size_t len;
+
+	if (!strncmp(line, "\\\"CATEGORY_", 11)) {
+		line += 2;
+		for (i = 0; i < CATEGORY_COUNT; i++) {
+			len = strlen(cmd_categories[i].name);
+			if (!strncmp(line, cmd_categories[i].name, len) &&
+			    (line[len] == '\n' || line[len] == '\0'))
+				return i;
+		}
+	}
+
+	return CATEGORY_OTHER;
+}
+
+/*
+ * For *.*_main files (static man pages), extract command name and
+ * description directly from the text in the file under the .SH NAME section.
+ */
+static int _get_main_index_cname(const char *path, const char *main, struct command_name **cname)
+{
+	FILE *f;
+	char line[1024];
+	int in_name = 0;
+	int first_line = 1;
+	char *delim;
+	size_t len;
+
+	if (!(f = fopen(path, "r"))) {
+		log_error("Failed to open file %s.", main);
+		return 0;
+	}
+
+	if (!(*cname = calloc(1, sizeof(**cname)))) {
+		log_error("Failed to allocate memory for command name structure.");
+		fclose(f);
+		return 0;
+	}
+
+	while (fgets(line, sizeof(line), f)) {
+		if (first_line) {
+			/* Category is always written in the first line. */
+			(*cname)->category = _get_category(line);
+			first_line = 0;
+		}
+		/* Look for .SH NAME section */
+		if (in_name) {
+			if (!strncmp(line, ".SH ", 4))
+				break;
+		} else {
+			if (!strncmp(line, ".SH NAME", 8))
+				in_name = 1;
+			continue;
+		}
+
+		/* Skip empty lines and comments in NAME section */
+		if ((line[0] == '\n' || line[0] == '.'))
+			continue;
+
+		if ((delim = strstr(line, " \\(em "))) {
+			delim[0] = '\0';
+			delim += 6;
+		}
+
+		if (!delim && (delim = strstr(line, " - "))) {
+			delim[0] = '\0';
+			delim += 3;
+		}
+
+		if (delim && (len = strlen(delim)) > 1) {
+			delim[len - 1] = '\0';
+			(*cname)->desc = strdup(delim);
+		}
+
+		strncpy((char *) (*cname)->name, line, sizeof((*cname)->name) - 1);
+
+		break;
+	}
+
+	fclose(f);
+	return 1;
+}
+
+static int _get_index_cname(const char *path, struct command_name **cname)
+{
+	const char *name;
+
+	name = strrchr(path, '/');
+	name = name ? name + 1 : path;
+
+	if (_str_has_suffix(name, "_des"))
+		return _get_des_index_cname(name, cname);
+
+	return _get_main_index_cname(path, name, cname);
+}
+
+static void _print_alphabetical_index(struct command_name **cnames, int count)
+{
+	char current_letter = 0;
+	int i;
+
+	/* Sort index items alphabetically by name. */
+	qsort(cnames, count, sizeof(struct command_name *), _compare_cname_name);
+
+	_print_header("LVM-INDEX", 7);
+	printf(".\n.SH NAME\n.\n");
+	printf("lvm-index \\(em LVM command index\n");
+	printf(".\n.SH DESCRIPTION\n.\n");
+	printf("This page provides an alphabetical index of LVM manual pages.\n");
+	printf(".\n.SH INDEX\n.\n");
+
+	/* Generate alphabetical index */
+	for (i = 0; i < count; i++) {
+		char first_letter = tolower(cnames[i]->name[0]);
+
+		/* Start new letter section if needed */
+		if (first_letter != current_letter) {
+			if (current_letter != 0) {
+				printf(".RE\n");
+			}
+			current_letter = first_letter;
+			printf(".SH %c\n", toupper(first_letter));
+			printf(".RS\n");
+		}
+
+		/* Print command entry */
+		printf(".TP\n");
+		printf("\\fB%s\\fP", cnames[i]->name);
+		if (cnames[i]->desc[0])
+			printf(" \\(em %s", cnames[i]->desc);
+		printf("\n");
+	}
+
+	if (current_letter != 0) {
+		printf(".RE\n");
+	}
+}
+
+static void _print_category_index(struct command_name **cnames, int count)
+{
+	int i, j;
+	cmd_category_t current_category = CATEGORY_OTHER;
+	int category_start = 0;
+
+	/* Sort by category first */
+	qsort(cnames, count, sizeof(struct command_name *), _compare_cname_category);
+
+	_print_header("LVM-CATEGORIES", 7);
+	printf(".\n.SH NAME\n.\n");
+	printf("lvm-categories \\(em LVM command categories\n");
+	printf(".\n.SH DESCRIPTION\n.\n");
+	printf("This page provides categorized list of LVM manual pages.\n");
+	printf(".\n.SH CATEGORIES\n.\n");
+
+	/* Group by category and sort alphabetically within each category */
+	for (i = 0; i <= count; i++) {
+		cmd_category_t category = (i < count) ? cnames[i]->category : CATEGORY_OTHER + 1;
+
+		/* If category changed or we reached the end, process the previous category */
+		if (category != current_category && i > 0) {
+			/* Sort the current category alphabetically by name */
+			qsort(&cnames[category_start], i - category_start,
+			      sizeof(struct command_name *), _compare_cname_name);
+
+			/* Print category header */
+			printf(".SH %s\n", cmd_categories[current_category].desc);
+			printf(".RS\n");
+
+			/* Print all commands in this category */
+			for (j = category_start; j < i; j++) {
+				printf(".TP\n");
+				printf("\\fB%s\\fP", cnames[j]->name);
+				if (cnames[j]->desc[0])
+					printf(" \\(em %s", cnames[j]->desc);
+				printf("\n");
+			}
+
+			printf(".RE\n");
+			category_start = i;
+		}
+
+		current_category = category;
+	}
+}
+
+static int _print_index(char **files, int count, int categories)
+{
+	struct command_name **cnames;
+	int i;
+	int r = 0;
+
+	if (!(cnames = calloc(count, sizeof(struct command_name *)))) {
+		log_error("Failed to allocate memory for index items.");
+		goto out;
+	}
+
+	for (i = 0; i < count; i++) {
+		if (!_get_index_cname(files[i], &cnames[i])) {
+			log_error("Failed to extract name and description from %s.", files[i]);
+			goto out;
+		}
+	}
+
+	if (categories)
+		_print_category_index(cnames, count);
+	else
+		_print_alphabetical_index(cnames, count);
+
+	printf(".SH SEE ALSO\n");
+	printf("\\fBlvm\\fP(8), \\fBlvm.conf\\fP(5), \\fBlvmdump\\fP(8)\n");
+
+	r = 1;
+out:
+	if (cnames) {
+		for (i = 0; i < count; i++) {
+			if (cnames[i] && !cnames[i]->lvm_command_enum) {
+				free((void*) cnames[i]->desc);
+				free(cnames[i]);
+			}
+		}
+		free(cnames);
+	}
+
+	return r;
 }
 
 /* return 1 if the lists do not match, 0 if they match */
@@ -1661,6 +1963,12 @@ int main(int argc, char *argv[])
 	int primary = 0;
 	int secondary = 0;
 	int check = 0;
+	int group_psc = 0;
+	int index = 0;
+	int categories = 0;
+	char **index_files = NULL;
+	int index_file_count = 0;
+	int i;
 	int r = 0;
 	size_t sz = STDOUT_BUF_SIZE;
 
@@ -1668,6 +1976,8 @@ int main(int argc, char *argv[])
 		{"primary", no_argument, 0, 'p' },
 		{"secondary", no_argument, 0, 's' },
 		{"check", no_argument, 0, 'c' },
+		{"index", no_argument, 0, 'i' },
+		{"categories", no_argument, 0, 'a'},
 		{0, 0, 0, 0 }
 	};
 
@@ -1680,7 +1990,7 @@ int main(int argc, char *argv[])
 		int c;
 		int option_index = 0;
 
-		c = getopt_long(argc, argv, "psc", long_options, &option_index);
+		c = getopt_long(argc, argv, "pscia", long_options, &option_index);
 		if (c == -1)
 			break;
 
@@ -1696,26 +2006,53 @@ int main(int argc, char *argv[])
 		case 'c':
 			check = 1;
 			break;
+		case 'i':
+			index = 1;
+			break;
+		case 'a':
+			categories = 1;
+			break;
 		}
 	}
 
-	if (!primary && !secondary && !check) {
-		log_error("Usage: %s --primary|--secondary|--check <command> [/path/to/description-file].", argv[0]);
+	group_psc = primary || secondary || check;
+
+	if ((!group_psc && !index && !categories) ||
+	     (index && group_psc) || (categories && group_psc) || (index && categories)) {
+		log_error("Usage: %s --primary|--secondary|--check <command> [/path/to/description-file] "
+			  "| --index file1 file2 ... | --categories file1 file2 ...", argv[0]);
 		goto out_free;
 	}
 
-	if (optind < argc) {
-		if (!(cmdname = strdup(argv[optind++]))) {
-			log_error("Out of memory.");
+	if (index || categories) {
+		if (optind >= argc) {
+			log_error("No files specified for %s.", index ? "indexing" : "categorization");
 			goto out_free;
 		}
-	} else if (!check) {
-		log_error("Missing command name.");
-		goto out_free;
-	}
 
-	if (optind < argc)
-		desfile = argv[optind++];
+		index_file_count = argc - optind;
+		index_files = &argv[optind];
+
+		for (i = 0; i < index_file_count; i++) {
+			if (access(index_files[i], F_OK) < 0) {
+				log_error("File does not exist: %s.", index_files[i]);
+				goto out_free;
+			}
+		}
+	} else {
+		if (optind < argc) {
+			if (!(cmdname = strdup(argv[optind++]))) {
+				log_error("Out of memory.");
+				goto out_free;
+			}
+		} else if (!check) {
+			log_error("Missing command name.");
+			goto out_free;
+		}
+
+		if (optind < argc)
+			desfile = argv[optind++];
+	}
 
 	if (!define_commands(&cmdtool, NULL))
 		goto out_free;
@@ -1729,6 +2066,8 @@ int main(int argc, char *argv[])
 		_print_man_secondary(cmdname);
 	} else if (check) {
 		r = _check_overlap();
+	} else if (index || categories) {
+		r = _print_index(index_files, index_file_count, categories);
 	}
 
 out_free:
@@ -1740,3 +2079,4 @@ out_free:
 
 	exit(r ? EXIT_SUCCESS: EXIT_FAILURE);
 }
+

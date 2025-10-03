@@ -32,11 +32,12 @@ struct command_function {
 };
 
 struct command_name {
-	const char name[16];
+	const char name[24];
 	const char *desc; /* general command description from commands.h */
 	command_fn fn; /* old style */
 	unsigned int flags;
 	uint16_t lvm_command_enum; /* as declared in commands.h with _COMMAND */
+	cmd_category_t category;
 };
 
 struct command_name_args {
