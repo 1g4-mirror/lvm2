@@ -67,6 +67,7 @@ enum {
 	LD_OP_FENCE_RESULT,
 	LD_OP_SETLOCKARGS_BEFORE,
 	LD_OP_SETLOCKARGS_FINAL,
+	LD_OP_SET_LOCK,		/* test-only: directly set lock mode in daemon memory */
 };
 
 /* resource types */
@@ -125,6 +126,7 @@ struct client {
 #define LD_AF_REPAIR		   0x00800000
 #define LD_AF_NO_TIMEOUT	   0x01000000
 #define LD_AF_HOSTS_UNKNOWN	   0x02000000
+#define LD_AF_TEST_FOREIGN	   0x04000000 /* test-only: simulate remote lock holder */
 
 /*
  * Number of times to repeat a lock request after
@@ -221,6 +223,7 @@ struct resource {
 	unsigned int adopt : 1;		/* temp flag in remove_inactive_lvs */
 	unsigned int version_zero_valid : 1;
 	unsigned int use_vb : 1;
+	unsigned int test_foreign : 1;	/* daemon_test: pretend remote node holds lock */
 	struct list_head locks;
 	struct list_head actions;
 	struct list_head fence_wait_actions;
@@ -228,7 +231,8 @@ struct resource {
 	char lm_data[];			/* lock manager specific data */
 };
 
-#define LD_LF_PERSISTENT 0x00000001
+#define LD_LF_PERSISTENT     0x00000001
+#define LD_LF_TEST_INJECTED  0x00000002 /* test-only: synthetic lk added by set_lock */
 
 struct lock {
 	struct list_head list;		/* resource.locks */

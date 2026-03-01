@@ -942,6 +942,8 @@ static const char *op_str(int x)
 		return "running_lm";
 	case LD_OP_QUERY_LOCK:
 		return "query_lock";
+	case LD_OP_SET_LOCK:
+		return "set_lock";
 	case LD_OP_FIND_FREE_LOCK:
 		return "find_free_lock";
 	case LD_OP_KILL_VG:
@@ -1248,6 +1250,14 @@ static int lm_lock(struct lockspace *ls, struct resource *r, int mode, struct ac
 		   int adopt_only, int adopt_ok, int repair)
 {
 	int rv = -1;
+
+	/*
+	 * test-only: if --set-lock --foreign was used to mark this resource,
+	 * simulate a remote node holding an exclusive lock so that our lock
+	 * attempt fails with EAGAIN (as DLM would return when contested).
+	 */
+	if (daemon_test && r->test_foreign)
+		return -EAGAIN;
 
 	if (ls->lm_type == LD_LM_DLM)
 		rv = lm_lock_dlm(ls, r, mode, vb_out, adopt_only, adopt_ok);
@@ -2354,6 +2364,22 @@ static void res_process(struct lockspace *ls, struct resource *r,
 	 * lv lock conflicts won't be transient so don't retry them.
 	 */
 
+	/*
+	 * test-only: when test_foreign is set the resource carries a
+	 * synthetic EX lock that simulates a remote holder.  Immediately
+	 * fail any new lock requests with -EAGAIN so the client sees a
+	 * lock conflict rather than blocking indefinitely.
+	 */
+	if (r->test_foreign) {
+		list_for_each_entry_safe(act, safe, &r->actions, list) {
+			if (act->op == LD_OP_LOCK) {
+				act->result = -EAGAIN;
+				list_del(&act->list);
+				add_client_result(act);
+			}
+		}
+	}
+
 	if (r->mode == LD_LK_EX)
 		return;
 
@@ -2481,6 +2507,19 @@ static void res_process(struct lockspace *ls, struct resource *r,
 	 */
 	if ((r->type == LD_RT_LV) && (r->mode == LD_LK_UN) &&
 	    list_empty(&r->locks) && list_empty(&r->actions) && list_empty(&r->fence_wait_actions)) {
+
+		/*
+		 * test-only: keep the resource alive in ls->resources if it
+		 * carries a test_foreign flag so that the injected state
+		 * survives client disconnect and is visible to subsequent
+		 * lm_lock() calls.  Guard both the r_free and the dispose
+		 * paths so the resource is not freed regardless of whether
+		 * unlock_by_client_id is set.
+		 */
+		if (r->test_foreign) {
+			log_debug("%s:%s skip dispose test_foreign", ls->name, r->name);
+			return;
+		}
 
 		/* An implicit unlock of a transient lock. */
 		if (!unlock_by_client_id)
@@ -2750,6 +2789,78 @@ static int process_op_during_kill(struct action *act)
  */
 
 #define LOCK_RETRY_MS 1000 /* milliseconds to delay between retry */
+
+/*
+ * test-only: force r->mode and lk->mode to the requested mode for an LV
+ * resource.  Called from lockspace_thread_main when LD_OP_SET_LOCK is
+ * received in daemon_test mode.
+ */
+static void set_lock_act(struct lockspace *ls, struct action *act)
+{
+	struct resource *r;
+	struct lock *lk, *lk_safe;
+	int sh_count = 0;
+
+	/*
+	 * Find-or-create resource and force both r->mode and every lk->mode
+	 * to the requested mode.  Keeping lk->mode in sync with r->mode makes
+	 * the lock state visible in "lvmlockctl --info" output, which iterates
+	 * lk entries for display.
+	 */
+	if (!(r = find_resource_act(ls, act, 0))) {
+		act->result = -ENOMEM;
+		return;
+	}
+
+	r->mode = act->mode;
+
+	/*
+	 * Remove synthetic lk entries (LD_LF_TEST_INJECTED) added by a
+	 * previous set_lock call.  For UN mode also remove real persistent
+	 * entries: UN means no lock held so no lk entry should remain
+	 * (a lingering UN persistent lk would be found by find_lock_persistent
+	 * and misrouted through res_convert on the next lock request).
+	 * For non-UN mode update real entries in place.
+	 */
+	list_for_each_entry_safe(lk, lk_safe, &r->locks, list) {
+		if ((lk->flags & LD_LF_TEST_INJECTED) || (act->mode == LD_LK_UN)) {
+			list_del(&lk->list);
+			free_lock(lk);
+			continue;
+		}
+		lk->mode = act->mode;
+		if (act->mode == LD_LK_SH)
+			sh_count++;
+	}
+
+	/*
+	 * For non-UN modes with no real lk entries, add a synthetic one so
+	 * that "lvmlockctl --info" can display the injected mode
+	 * (format_info_lk needs a lk entry to print).
+	 */
+	if (act->mode != LD_LK_UN && list_empty(&r->locks)) {
+		if (!(lk = alloc_lock())) {
+			act->result = -ENOMEM;
+			return;
+		}
+		lk->mode = act->mode;
+		lk->flags = LD_LF_TEST_INJECTED;
+		list_add_tail(&lk->list, &r->locks);
+		if (act->mode == LD_LK_SH)
+			sh_count++;
+	}
+
+	r->sh_count = sh_count;
+	if (act->flags & LD_AF_TEST_FOREIGN)
+		r->test_foreign = 1;
+	else if (act->mode == LD_LK_UN)
+		r->test_foreign = 0;
+	log_debug("S %s set_lock %s mode %s%s",
+		  ls->name, r->name,
+		  mode_str(r->mode),
+		  r->test_foreign ? " foreign" : "");
+	act->result = 0;
+}
 
 static void *lockspace_thread_main(void *arg_in)
 {
@@ -3055,6 +3166,16 @@ static void *lockspace_thread_main(void *arg_in)
 					act->result = 0;
 					act->mode = r->mode;
 				}
+				list_del(&act->list);
+				add_client_result(act);
+				continue;
+			}
+
+			if (act->op == LD_OP_SET_LOCK) {
+				if (!daemon_test)
+					act->result = -EPERM;
+				else
+					set_lock_act(ls, act);
 				list_del(&act->list);
 				add_client_result(act);
 				continue;
@@ -4784,6 +4905,13 @@ static int client_send_result(struct client *cl, struct action *act)
 					  "mode = %s", mode_str(act->mode),
 					  NULL);
 
+	} else if (act->op == LD_OP_SET_LOCK) {
+
+		res = daemon_reply_simple("OK",
+					  "op = " FMTd64, (int64_t)act->op,
+					  "op_result = " FMTd64, (int64_t) act->result,
+					  NULL);
+
 	} else if (act->op == LD_OP_DUMP_LOG || act->op == LD_OP_DUMP_INFO) {
 		/*
 		 * lvmlockctl creates the unix socket then asks us to write to it.
@@ -5226,6 +5354,11 @@ static int str_to_op_rt(const char *req_name, int *op, int *rt)
 		*rt = LD_RT_LV;
 		return 0;
 	}
+	if (!strcmp(req_name, "set_lock_lv")) {
+		*op = LD_OP_SET_LOCK;
+		*rt = LD_RT_LV;
+		return 0;
+	}
 	if (!strcmp(req_name, "find_free_lock")) {
 		*op = LD_OP_FIND_FREE_LOCK;
 		*rt = LD_RT_VG;
@@ -5315,6 +5448,8 @@ static uint32_t str_to_opts(const char *str)
 		flags |= LD_AF_NODELAY;
 	if (strstr(str, "repair"))
 		flags |= LD_AF_REPAIR;
+	if (strstr(str, "foreign"))
+		flags |= LD_AF_TEST_FOREIGN;
 
 	/* FIXME: parse the flag values properly */
 	if (strstr(str, "adopt_only"))
@@ -5956,6 +6091,7 @@ skip_pvs_path:
 	case LD_OP_DROP_VG:
 	case LD_OP_BUSY:
 	case LD_OP_SETLOCKARGS_BEFORE:
+	case LD_OP_SET_LOCK:
 		rv = add_lock_action(act);
 		break;
 	default:
