@@ -15,6 +15,7 @@
 
 #include "libdm/misc/dmlib.h"
 #include "libdm-targets.h"
+#include "libdm-async.h"
 #include "libdm/libdm-common.h"
 
 #include <stddef.h>
@@ -2391,6 +2392,257 @@ repeat_ioctl:
       bad:
 	_dm_zfree_dmi(dmi);
 	return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Async DM ioctl API                                                   */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Return the ioctl command number for a task type.
+ * Used internally by libdm-async.c workers.
+ */
+unsigned dm_task_get_ioctl_cmd(const struct dm_task *dmt)
+{
+	if ((unsigned) dmt->type >= DM_ARRAY_SIZE(_cmd_data_v4))
+		return 0;
+	return _cmd_data_v4[dmt->type].cmd;
+}
+
+/*
+ * Build the dmi ioctl buffer without submitting it.
+ * Stores the result in dmt->dmi.v4.
+ * Call before dm_task_submit().  Returns 1 on success, 0 on failure.
+ */
+int dm_task_prepare(struct dm_task *dmt)
+{
+	struct dm_ioctl *dmi;
+	int ioctl_with_uevent;
+
+	if ((unsigned) dmt->type >= DM_ARRAY_SIZE(_cmd_data_v4)) {
+		log_error(INTERNAL_ERROR "unknown device-mapper task %d", dmt->type);
+		return 0;
+	}
+
+	dmi = _flatten(dmt, _ioctl_buffer_double_factor);
+	if (!dmi) {
+		log_error("Couldn't create ioctl argument.");
+		return 0;
+	}
+
+	if (dmt->type == DM_DEVICE_TABLE)
+		dmi->flags |= DM_STATUS_TABLE_FLAG;
+
+	dmi->flags |= DM_EXISTS_FLAG;	/* FIXME */
+
+	if (dmt->no_open_count)
+		dmi->flags |= DM_SKIP_BDGET_FLAG;
+
+	ioctl_with_uevent = dmt->type == DM_DEVICE_RESUME ||
+			    dmt->type == DM_DEVICE_REMOVE ||
+			    dmt->type == DM_DEVICE_RENAME;
+
+	if (ioctl_with_uevent && dm_cookie_supported()) {
+		dmi->event_nr |= DM_UDEV_PRIMARY_SOURCE_FLAG <<
+				 DM_UDEV_FLAGS_SHIFT;
+
+		if (!dmt->cookie_set && dm_udev_get_sync_support()) {
+			log_debug_activation("Cookie value is not set while trying "
+					     "to call %s ioctl. Falling back to "
+					     "libdevmapper node creation.",
+					     dmt->type == DM_DEVICE_RESUME ? "DM_DEVICE_RESUME" :
+					     dmt->type == DM_DEVICE_REMOVE ? "DM_DEVICE_REMOVE" :
+									     "DM_DEVICE_RENAME");
+			dmi->event_nr |= (DM_UDEV_DISABLE_DM_RULES_FLAG |
+					  DM_UDEV_DISABLE_SUBSYSTEM_RULES_FLAG) <<
+					 DM_UDEV_FLAGS_SHIFT;
+		}
+	}
+
+	_dm_zfree_dmi(dmt->dmi.v4);
+	dmt->dmi.v4 = dmi;
+	return 1;
+}
+
+/*
+ * Process the result of an ioctl submitted outside dm_task_run().
+ * ioctl_result is the return value of ioctl().
+ * If ioctl_result < 0, the caller must set dmt->ioctl_errno = errno
+ * immediately after the ioctl() call (before any other errno-modifying call).
+ * Must be called from the main thread only -- node ops are not thread-safe.
+ * Returns 1 on success, 0 on failure, -1 if buffer too small (retry needed).
+ */
+int dm_task_handle_completion(struct dm_task *dmt, int ioctl_result)
+{
+	struct dm_ioctl *dmi = dmt->dmi.v4;
+	int ioctl_with_uevent;
+	int check_udev;
+	int rely_on_udev;
+	const char *dev_name = DEV_NAME(dmt);
+
+	if (!dmi)
+		return_0;
+
+	if (ioctl_result < 0 && dmt->expected_errno != dmt->ioctl_errno) {
+		if (dmt->ioctl_errno == ENXIO && ((dmt->type == DM_DEVICE_INFO) ||
+						  (dmt->type == DM_DEVICE_MKNODES) ||
+						  (dmt->type == DM_DEVICE_STATUS)))
+			dmi->flags &= ~DM_EXISTS_FLAG;	/* FIXME */
+		else {
+			if (_log_suppress || dmt->ioctl_errno == EINTR)
+				log_verbose("device-mapper: %s ioctl on %s failed: %s",
+					    _cmd_data_v4[dmt->type].name,
+					    dmi->name[0] ? dmi->name : DEV_NAME(dmt) ? : "",
+					    strerror(dmt->ioctl_errno));
+			else
+				log_error("device-mapper: %s ioctl on %s failed: %s",
+					  _cmd_data_v4[dmt->type].name,
+					  dmi->name[0] ? dmi->name : DEV_NAME(dmt) ? : "",
+					  strerror(dmt->ioctl_errno));
+			_udev_complete(dmt);
+			return 0;
+		}
+	}
+
+	ioctl_with_uevent = dmt->type == DM_DEVICE_RESUME ||
+			    dmt->type == DM_DEVICE_REMOVE ||
+			    dmt->type == DM_DEVICE_RENAME;
+
+	if (ioctl_with_uevent && dm_udev_get_sync_support() &&
+	    !_check_uevent_generated(dmi)) {
+		log_debug_activation("Uevent not generated! Calling udev_complete "
+				     "internally to avoid process lock-up.");
+		_udev_complete(dmt);
+	}
+
+#ifdef DM_IOCTLS
+	if (!_dm_ioctl_unmangle_names(dmt->type, dmi))
+		goto bad;
+
+	if (dmt->type != DM_DEVICE_REMOVE &&
+	    !_dm_ioctl_unmangle_uuids(dmt->type, dmi))
+		goto bad;
+#endif
+
+	if (dmi->flags & DM_BUFFER_FULL_FLAG)
+		return -1;	/* caller must retry with a larger buffer */
+
+	check_udev = dmt->cookie_set &&
+		     !(dmt->event_nr >> DM_UDEV_FLAGS_SHIFT &
+		       DM_UDEV_DISABLE_DM_RULES_FLAG);
+
+	rely_on_udev = dmt->cookie_set ? (dmt->event_nr >> DM_UDEV_FLAGS_SHIFT &
+					  DM_UDEV_DISABLE_LIBRARY_FALLBACK) : 0;
+
+	switch (dmt->type) {
+	case DM_DEVICE_CREATE:
+		if ((dmt->add_node == DM_ADD_NODE_ON_CREATE) &&
+		    dev_name && *dev_name && !rely_on_udev)
+			add_dev_node(dev_name, MAJOR(dmi->dev),
+				     MINOR(dmi->dev), dmt->uid, dmt->gid,
+				     dmt->mode, check_udev, rely_on_udev);
+		break;
+	case DM_DEVICE_REMOVE:
+		if (dev_name && !rely_on_udev)
+			rm_dev_node(dev_name, check_udev, rely_on_udev);
+		break;
+	case DM_DEVICE_RENAME:
+		if (!dmt->new_uuid && dev_name)
+			rename_dev_node(dev_name, dmt->newname,
+					check_udev, rely_on_udev);
+		break;
+	case DM_DEVICE_RESUME:
+		if ((dmt->add_node == DM_ADD_NODE_ON_RESUME) &&
+		    dev_name && *dev_name)
+			add_dev_node(dev_name, MAJOR(dmi->dev),
+				     MINOR(dmi->dev), dmt->uid, dmt->gid,
+				     dmt->mode, check_udev, rely_on_udev);
+		set_dev_node_read_ahead(dev_name,
+					MAJOR(dmi->dev), MINOR(dmi->dev),
+					dmt->read_ahead, dmt->read_ahead_flags);
+		break;
+	case DM_DEVICE_MKNODES:
+		if (dmi->flags & DM_EXISTS_FLAG)
+			add_dev_node(dmi->name, MAJOR(dmi->dev),
+				     MINOR(dmi->dev), dmt->uid,
+				     dmt->gid, dmt->mode, 0, rely_on_udev);
+		else if (dev_name)
+			rm_dev_node(dev_name, 0, rely_on_udev);
+		break;
+	case DM_DEVICE_STATUS:
+	case DM_DEVICE_TABLE:
+	case DM_DEVICE_WAITEVENT:
+		if (!_unmarshal_status(dmt, dmi))
+			goto bad;
+		break;
+	}
+
+	return 1;
+bad:
+	_dm_zfree_dmi(dmt->dmi.v4);
+	dmt->dmi.v4 = NULL;
+	return 0;
+}
+
+/*
+ * Create an async context for parallel ioctl submission.
+ * max_parallel is the number of ioctls that may be in-flight simultaneously.
+ * Probes for io_uring IOCTL support at runtime; falls back to thread pool.
+ * The caller must have already opened the DM control fd (e.g. by calling
+ * dm_task_run() or explicitly via any dm_task that goes through _open_control).
+ * Returns a context on success, NULL on failure.
+ */
+struct dm_async_ctx *dm_async_ctx_create(unsigned max_parallel)
+{
+	if (!max_parallel) {
+		log_error("dm_async_ctx_create: max_parallel must be > 0.");
+		return NULL;
+	}
+
+	if (!_open_control())
+		return NULL;
+
+#ifdef IORING_OP_IOCTL
+	{
+		struct dm_async_ctx *ctx =
+			_dm_async_ctx_alloc_uring(_control_fd, max_parallel);
+		if (ctx)
+			return ctx;
+		log_debug_activation("io_uring not available; using thread pool.");
+	}
+#endif
+
+	return _dm_async_ctx_alloc_threads(_control_fd, max_parallel);
+}
+
+void dm_async_ctx_destroy(struct dm_async_ctx *ctx)
+{
+	if (ctx)
+		ctx->fn_destroy(ctx);
+}
+
+/*
+ * Submit a prepared task for async execution.
+ * dmt->dmi.v4 must already be built by dm_task_prepare().
+ * Returns 1 on success, 0 on failure.  May block if the context is full.
+ */
+int dm_task_submit(struct dm_task *dmt, struct dm_async_ctx *ctx,
+		   void *userdata)
+{
+	return ctx->fn_submit(ctx, dmt, userdata);
+}
+
+/*
+ * Wait for the next completed ioctl.
+ * On return, *userdata_out is the value passed to dm_task_submit().
+ * *result_out is the raw ioctl() return value; call dm_task_handle_completion()
+ * to do post-processing.
+ * Returns 1 when a completion was retrieved, 0 when nothing is left.
+ */
+int dm_async_wait_completion(struct dm_async_ctx *ctx,
+			     void **userdata_out, int *result_out)
+{
+	return ctx->fn_wait(ctx, userdata_out, result_out);
 }
 
 void dm_hold_control_dev(int hold_open)
