@@ -2278,12 +2278,78 @@ static int _count_devices(CMD_ARGS)
 	return 1;
 }
 
+/*
+ * Remove all listed devices in parallel using the async ioctl API.
+ * Each DM_DEVICE_REMOVE ioctl is submitted to the thread pool so that
+ * kernel-side RCU waits overlap instead of stacking up serially.
+ * Returns 1 if all removals succeeded, 0 if any failed.
+ */
+#define DM_REMOVE_PARALLEL 16
+
+static int _remove_devices_async(void)
+{
+	struct dm_task *list_dmt, *dmt;
+	struct dm_async_ctx *ctx;
+	struct dm_names *names;
+	unsigned next = 0;
+	void *ud;
+	int r = 1, res;
+
+	if (!(list_dmt = dm_task_create(DM_DEVICE_LIST)))
+		return_0;
+
+	if (!dm_task_run(list_dmt)) {
+		r = 0;
+		goto out_list;
+	}
+
+	if (!(names = dm_task_get_names(list_dmt)) || !names->dev)
+		goto out_list;
+
+	if (!(ctx = dm_async_ctx_create(DM_REMOVE_PARALLEL))) {
+		r = 0;
+		goto out_list;
+	}
+
+	do {
+		names = (struct dm_names *)((char *)names + next);
+
+		if (!(dmt = dm_task_create(DM_DEVICE_REMOVE))) {
+			r = 0;
+			goto drain;
+		}
+
+		if (!dm_task_set_name(dmt, names->name) ||
+		    !dm_task_prepare(dmt) ||
+		    !dm_task_submit(dmt, ctx, dmt)) {
+			dm_task_destroy(dmt);
+			r = 0;
+		}
+
+		next = names->next;
+	} while (next);
+
+drain:
+	while (dm_async_wait_completion(ctx, &ud, &res)) {
+		dmt = ud;
+		if (!dm_task_handle_completion(dmt, res))
+			r = 0;
+		dm_task_destroy(dmt);
+	}
+
+	dm_async_ctx_destroy(ctx);
+out_list:
+	dm_task_destroy(list_dmt);
+	return r;
+}
+
 static int _remove_all(CMD_ARGS)
 {
 	int r;
 
-	/* Remove all closed devices */
-	r =  _simple(DM_DEVICE_REMOVE_ALL, "", 0, 0) | dm_mknodes(NULL);
+	/* Remove all closed devices in parallel */
+	r = _remove_devices_async();
+	r |= dm_mknodes(NULL);
 
 	if (!_switches[FORCE_ARG])
 		return r;
