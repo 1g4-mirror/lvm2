@@ -1,5 +1,7 @@
 Version 2.03.40 - 
 ==================
+  Add async deactivation for bulk LV operations.
+  Add activation/use_async_ioctl configuration option.
   Validate area_count before subtracting parity_devs in RAID metadata import.
   Validate area_count against MAX_STRIPES to prevent integer overflow.
   Validate mda size and prevent uint64 to uint32 truncation in metadata reads.
