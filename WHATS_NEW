@@ -1,5 +1,6 @@
 Version 2.03.40 - 
 ==================
+  Prevent redundant device access attempts after I/O errors via DEV_SCAN_NOT_READ.
   Validate area_count before subtracting parity_devs in RAID metadata import.
   Validate area_count against MAX_STRIPES to prevent integer overflow.
   Validate mda size and prevent uint64 to uint32 truncation in metadata reads.
