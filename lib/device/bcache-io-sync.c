@@ -33,6 +33,7 @@
 struct sync_io {
 	struct dm_list list;
 	void *context;
+	int error;
 };
 
 struct sync_engine {
@@ -60,6 +61,7 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 			sector_t sb, sector_t se, void *data, void *context)
 {
 	int rv;
+	int error = 0;
 	off_t offset;
 	uint64_t pos = 0;
 	uint64_t len = (se - sb) * 512;
@@ -89,8 +91,8 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 				 _sync_dir(d), (unsigned long long)offset,
 				 (unsigned long long)(len - pos),
 				 strerror(errno));
-			free(io);
-			return false;
+			error = -errno;
+			break;
 		}
 
 		if (rv == 0)
@@ -99,7 +101,7 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 		pos += rv;
 	}
 
-	if (pos < len) {
+	if (!error && pos < len) {
 		if (pos >= (1 << SECTOR_SHIFT)) {
 			/* minimum acceptable read is 1 sector */
 			log_debug_devs("bcache sync %s offset %llu requested %llu got %llu.",
@@ -109,13 +111,14 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 			log_warn("WARNING: bcache sync %s offset %llu requested %llu got %llu.",
 				 _sync_dir(d), (unsigned long long)offset,
 				 (unsigned long long)len, (unsigned long long)pos);
-			free(io);
-			return false;
+			error = -ENODATA;
 		}
 	}
 
-	dm_list_add(&e->complete, &io->list);
+	/* Always queue completion - errors reported via callback in wait() */
 	io->context = context;
+	io->error = error;
+	dm_list_add(&e->complete, &io->list);
 
 	return true;
 }
@@ -126,7 +129,7 @@ static bool _sync_wait(struct io_engine *ioe, io_complete_fn fn)
 	struct sync_engine *e = _to_sync(ioe);
 
 	dm_list_iterate_items_safe(io, tmp, &e->complete) {
-		fn(io->context, 0);
+		fn(io->context, io->error);
 		dm_list_del(&io->list);
 		free(io);
 	}
