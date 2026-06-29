@@ -21,6 +21,11 @@ case "$1" in
 esac
 done
 
+if [[ ",${CI_MERGE_REQUEST_LABELS}," == *,ignore-dry-run,* ]]; then
+	echo "INFO: dry-run overridden by ignore-dry-run label" >&2
+	exit 1
+fi
+
 # TODO: This just compares HEAD with main. Do we care about other branches?
 HEAD="${1:-"HEAD"}"
 TARGET=${2:-"origin/main"}
@@ -34,8 +39,7 @@ case $? in
 	1)
 		;;
 	*)
-		die "Problem with git diff. The tests will run anyway."
-		exit 2 ;;
+		die "Problem with git diff. The tests will run anyway." ;;
 esac
 
 echo -e "\nChecking the files for significant changes:"
