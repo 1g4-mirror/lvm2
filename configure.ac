@@ -104,10 +104,6 @@ AC_CHECK_HEADERS([assert.h ctype.h dirent.h errno.h fcntl.h float.h \
 
 AC_CHECK_HEADERS(termios.h sys/statvfs.h sys/timerfd.h sys/vfs.h linux/magic.h linux/fiemap.h)
 AC_CHECK_HEADERS(xfs/xfs.h, LVM_NO_XFS_WARN=, LVM_NO_XFS_WARN=y, [#define _GNU_SOURCE 1])
-AS_IF([test "$with_libaio" != "no"],
-      [AC_CHECK_HEADERS(libaio.h, [], [], [])])
-AS_IF([test "$with_liburing" != "no"],
-      [AC_CHECK_HEADERS(liburing.h, [], [], [#define _GNU_SOURCE 1])])
 AS_CASE(["$host_os"],
 	[linux*], [AC_CHECK_HEADERS([asm/byteorder.h linux/fs.h malloc.h], [], [AC_MSG_ERROR(bailing out)])],
 	[darwin*], [AC_CHECK_HEADERS([machine/endian.h sys/disk.h], [], [AC_MSG_ERROR(bailing out)])])
@@ -1954,7 +1950,13 @@ AC_DEFINE_UNQUOTED(LVM_CONFIGURE_LINE, "$CONFIGURE_LINE", [configure command lin
 # libaio support (optional, for bcache async backend)
 AS_IF([test "$with_libaio" != "no"],
       [AIO_CFLAGS=${AIO_CFLAGS:-}
-       AIO_LIBS=${AIO_LIBS:--laio}],
+       save_CPPFLAGS=$CPPFLAGS
+       CPPFLAGS="$CPPFLAGS $AIO_CFLAGS"
+       AC_CHECK_HEADERS(libaio.h,
+                        [AIO_LIBS=${AIO_LIBS:--laio}],
+                        [AIO_CFLAGS=
+                         AIO_LIBS=])
+       CPPFLAGS=$save_CPPFLAGS],
       [AIO_CFLAGS=
        AIO_LIBS=])
 AC_ARG_VAR([AIO_CFLAGS], [C compiler flags for AIO])
@@ -1965,11 +1967,14 @@ AC_ARG_VAR([AIO_LIBS], [linker flags for AIO])
 AS_IF([test "$with_liburing" != "no"],
       [PKG_CHECK_MODULES([URING], [liburing], [HAVE_LIBURING_PC=yes], [HAVE_LIBURING_PC=no])
        AS_IF([test "$HAVE_LIBURING_PC" = no],
-             [AS_IF([test "$ac_cv_header_liburing_h" = yes],
-                    [URING_CFLAGS=${URING_CFLAGS:-}
-                     URING_LIBS=${URING_LIBS:--luring}],
-                    [URING_CFLAGS=
-                     URING_LIBS=])])],
+             [URING_CFLAGS=${URING_CFLAGS:-}
+              URING_LIBS=${URING_LIBS:--luring}])
+       save_CPPFLAGS=$CPPFLAGS
+       CPPFLAGS="$CPPFLAGS $URING_CFLAGS"
+       AC_CHECK_HEADERS(liburing.h, [],
+                        [URING_CFLAGS=
+                         URING_LIBS=], [#define _GNU_SOURCE 1])
+       CPPFLAGS=$save_CPPFLAGS],
       [URING_CFLAGS=
        URING_LIBS=])
 AC_ARG_VAR([URING_CFLAGS], [C compiler flags for liburing])

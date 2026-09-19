@@ -6902,27 +6902,6 @@ esac
 fi
 
 done
-if test "$with_libaio" != "no"
-then :
-  ac_fn_c_check_header_compile "$LINENO" "libaio.h" "ac_cv_header_libaio_h" "$ac_includes_default"
-if test "x$ac_cv_header_libaio_h" = xyes
-then :
-  printf '%s\n' "#define HAVE_LIBAIO_H 1" >>confdefs.h
-
-fi
-
-fi
-if test "$with_liburing" != "no"
-then :
-  ac_fn_c_check_header_compile "$LINENO" "liburing.h" "ac_cv_header_liburing_h" "#define _GNU_SOURCE 1
-"
-if test "x$ac_cv_header_liburing_h" = xyes
-then :
-  printf '%s\n' "#define HAVE_LIBURING_H 1" >>confdefs.h
-
-fi
-
-fi
 case "$host_os" in #(
   linux*) :
            for ac_header in asm/byteorder.h linux/fs.h malloc.h
@@ -16780,7 +16759,23 @@ printf '%s\n' "#define LVM_CONFIGURE_LINE \"$CONFIGURE_LINE\"" >>confdefs.h
 if test "$with_libaio" != "no"
 then :
   AIO_CFLAGS=${AIO_CFLAGS:-}
-       AIO_LIBS=${AIO_LIBS:--laio}
+       save_CPPFLAGS=$CPPFLAGS
+       CPPFLAGS="$CPPFLAGS $AIO_CFLAGS"
+              for ac_header in libaio.h
+do :
+  ac_fn_c_check_header_compile "$LINENO" "libaio.h" "ac_cv_header_libaio_h" "$ac_includes_default"
+if test "x$ac_cv_header_libaio_h" = xyes
+then :
+  printf '%s\n' "#define HAVE_LIBAIO_H 1" >>confdefs.h
+ AIO_LIBS=${AIO_LIBS:--laio}
+else case e in #(
+  e) AIO_CFLAGS=
+                         AIO_LIBS= ;;
+esac
+fi
+
+done
+       CPPFLAGS=$save_CPPFLAGS
 else case e in #(
   e) AIO_CFLAGS=
        AIO_LIBS= ;;
@@ -16866,16 +16861,27 @@ printf '%s\n' "yes" >&6; }
 fi
        if test "$HAVE_LIBURING_PC" = no
 then :
-  if test "$ac_cv_header_liburing_h" = yes
-then :
   URING_CFLAGS=${URING_CFLAGS:-}
-                     URING_LIBS=${URING_LIBS:--luring}
+              URING_LIBS=${URING_LIBS:--luring}
+fi
+       save_CPPFLAGS=$CPPFLAGS
+       CPPFLAGS="$CPPFLAGS $URING_CFLAGS"
+              for ac_header in liburing.h
+do :
+  ac_fn_c_check_header_compile "$LINENO" "liburing.h" "ac_cv_header_liburing_h" "#define _GNU_SOURCE 1
+"
+if test "x$ac_cv_header_liburing_h" = xyes
+then :
+  printf '%s\n' "#define HAVE_LIBURING_H 1" >>confdefs.h
+
 else case e in #(
   e) URING_CFLAGS=
-                     URING_LIBS= ;;
+                         URING_LIBS= ;;
 esac
 fi
-fi
+
+done
+       CPPFLAGS=$save_CPPFLAGS
 else case e in #(
   e) URING_CFLAGS=
        URING_LIBS= ;;
