@@ -30,7 +30,7 @@ get_devs
 vgcreate $SHARED -s 64K "$vg" "${DEVICES[@]}"
 
 # create non-power-of-2 pool
-lvcreate -l100 -c 192 -T $vg/pool
+lvcreate -y -l100 -c 192 -T $vg/pool
 
 check lv_field $vg/pool discards "passdown"
 
