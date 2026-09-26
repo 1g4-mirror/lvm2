@@ -1,5 +1,14 @@
 Version 2.03.44 - 
 ==================
+  Add io_backend config to select the bcache I/O backend: uring, threads, aio or sync.
+  Add optional io_uring backend for bcache (requires liburing, kernel 5.1+).
+  Add pthread-based I/O backend for bcache to eliminate libaio io_destroy penalty.
+  Default the bcache I/O backend to io_uring, then threads, then sync.
+  Deprecate use_aio, which continues to work as before.
+  Add configure --with-liburing/--without-liburing to control io_uring support.
+  Add configure --with-libaio/--without-libaio to control async backend support.
+  Drain in-flight libaio on bcache destroy and cancel threads workers.
+  Log bcache short reads at debug level rather than warning.
   Fix out-of-bounds read when parsing short dmeventd client messages.
   Reject malformed numeric fields in dmeventd client registration messages.
   Reject dmeventd registrations without a plugin or device name.
