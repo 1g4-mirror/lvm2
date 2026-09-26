@@ -93,10 +93,16 @@ struct io_engine *bcache_create_io_engine(const char *hint)
 			engine = create_threads_io_engine(0);
 	} else if (!strcmp(hint, "uring")) {
 		engine = create_uring_io_engine(0);
+		if (!engine)
+			log_warn("WARNING: Requested uring I/O backend unavailable; using sync.");
 	} else if (!strcmp(hint, "threads")) {
 		engine = create_threads_io_engine(0);
+		if (!engine)
+			log_warn("WARNING: Requested threads I/O backend unavailable; using sync.");
 	} else if (!strcmp(hint, "async") || !strcmp(hint, "aio")) {
 		engine = create_async_io_engine(0);
+		if (!engine)
+			log_warn("WARNING: Requested async I/O backend unavailable; using sync.");
 	} else if (strcmp(hint, "sync")) {
 		/* Unknown backend - warn and use sync */
 		log_warn("WARNING: Unknown I/O backend '%s', using sync.", hint);

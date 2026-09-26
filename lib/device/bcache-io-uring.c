@@ -342,7 +342,7 @@ struct io_engine *create_uring_io_engine(unsigned queue_depth)
 
 	r = io_uring_queue_init(queue_depth, &ue->ring, 0);
 	if (r < 0) {
-		log_bcache_sys_warn(_uring, "queue_init", -r);
+		log_debug("bcache uring queue_init failed: %s", strerror(-r));
 		free(ue);
 		return NULL;
 	}
