@@ -1,5 +1,6 @@
 Version 2.03.45 - 
 ==================
+  Fix lvconvert image reduction on raid LVs with integrity.
   Add configure --with-default-io-engine=ENGINE setting.
   Refuse to extend an active --nosync RAID LV that is not in sync.
   Honor the requested allocation PV list when adding integrity to a RAID LV.
