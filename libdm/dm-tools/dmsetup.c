@@ -6004,6 +6004,28 @@ static int _dmsetup_help(CMD_ARGS);
  * VDO stats command.
  */
 
+/*
+ * Accept LVM name characters, excluding '/' so dm_task_set_name() cannot
+ * interpret a name obtained from sysfs as a filesystem path.
+ * Coverity does not model this as a sanitizer, so it is annotated to clear
+ * the tainted-string taint on the validated name.
+ */
+/* coverity[+tainted_string_sanitize_content:arg-0] */
+static int _vdo_dm_name_valid(const char *name)
+{
+	unsigned char c;
+
+	if (!*name)
+		return 0;
+
+	while ((c = *name++))
+		if (!isalnum(c) && c != '.' && c != '_' &&
+		    c != '-' && c != '+')
+			return 0;
+
+	return 1;
+}
+
 static int _vdostats_process_device(const char *name)
 {
 	char *stats_str;
@@ -6143,7 +6165,7 @@ static int _vdostats_walk(int major, int minor, struct vdo_walk *w)
 					dev_name, sizeof(dev_name)))
 			continue;
 
-		if (_vdo_check_device(dev_name)) {
+		if (_vdo_dm_name_valid(dev_name) && _vdo_check_device(dev_name)) {
 			/* Separate multiple verbose reports for readability */
 			if (w->found && _switches[VERBOSE_ARG])
 				putchar('\n');
