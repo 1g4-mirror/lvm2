@@ -339,6 +339,11 @@ static uint64_t _stats_region_is_grouped(const struct dm_stats* dms,
 	return group_id != DM_STATS_GROUP_NOT_PRESENT;
 }
 
+static int _stats_region_index_in_table(const struct dm_stats *dms, int region_id)
+{
+	return region_id >= 0 && (uint64_t) region_id <= dms->max_region;
+}
+
 static void _stats_histograms_destroy(struct dm_pool *mem,
 				      struct dm_stats_region *region)
 {
@@ -708,7 +713,7 @@ static void _stats_update_groups(struct dm_stats *dms)
 		for (i = dm_bit_get_first(group->regions);
 		     i != (int)DM_STATS_GROUP_NOT_PRESENT;
 		     i = dm_bit_get_next(group->regions, i)) {
-			if ((uint64_t) i > dms->max_region)
+			if (!_stats_region_index_in_table(dms, i))
 				continue;
 			dms->regions[i].group_id = group_id;
 		}
@@ -719,15 +724,22 @@ static void _check_group_regions_present(struct dm_stats *dms,
 					 struct dm_stats_group *group)
 {
 	dm_bitset_t regions = group->regions;
-	int64_t i;
+	int i;
 
-	for (i = dm_bit_get_first(regions); i >= 0;
+	/*
+	 * dm_bit_get_first/next() only return -1 or a valid bit index;
+	 * the upper bound is redundant at run time but makes that
+	 * invariant explicit to static analysis, which cannot derive the
+	 * word index expanded by the dm_bit_clear() below.
+	 */
+	for (i = dm_bit_get_first(regions);
+	     i >= 0 && (uint64_t) i < STATS_LIST_MAX_REGION_INDEX;
 	     i = dm_bit_get_next(regions, i))
-		if (((uint64_t) i > dms->max_region) ||
+		if (!_stats_region_index_in_table(dms, i) ||
 		    !_stats_region_present(&dms->regions[i])) {
 			log_warn("Group descriptor " FMTu64 " contains "
-				 "non-existent region_id " FMTu64 ".",
-				 group->group_id, (uint64_t) i);
+				 "non-existent region_id %d.",
+				 group->group_id, i);
 			dm_bit_clear(regions, i);
 		}
 }
@@ -2193,7 +2205,7 @@ static void _stats_clear_group_regions(struct dm_stats *dms, uint64_t group_id)
 	for (i = dm_bit_get_first(group->regions);
 	     i != (int)DM_STATS_GROUP_NOT_PRESENT;
 	     i = dm_bit_get_next(group->regions, i))
-		if ((uint64_t) i <= dms->max_region)
+		if (_stats_region_index_in_table(dms, i))
 			dms->regions[i].group_id = DM_STATS_GROUP_NOT_PRESENT;
 }
 
