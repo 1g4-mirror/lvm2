@@ -1060,11 +1060,31 @@ static int _stats_parse_list_region(struct dm_stats *dms,
 	return 1;
 }
 
+/*
+ * Append one entry to both the region and group tables. The two tables are
+ * dense arrays indexed by region_id, so they must always grow in lockstep.
+ */
+static int _stats_list_grow(struct dm_stats *dms,
+			    const struct dm_stats_region *region,
+			    const struct dm_stats_group *group)
+{
+	if (!dm_pool_grow_object(dms->mem, region, sizeof(*region)))
+		return_0;
+
+	if (!dm_pool_grow_object(dms->group_mem, group, sizeof(*group)))
+		return_0;
+
+	return 1;
+}
+
 static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 {
-	uint64_t max_region = 0, nr_regions = 0;
-	struct dm_stats_region cur, fill;
+	uint64_t max_region = 0, nr_entries = 0, nr_regions = 0;
+	struct dm_stats_region cur = { 0 };
 	struct dm_stats_group cur_group;
+	/* placeholder entry for a missing region_id */
+	struct dm_stats_region fill = { .region_id = DM_STATS_REGION_NOT_PRESENT };
+	struct dm_stats_group fill_group = { .group_id = DM_STATS_GROUP_NOT_PRESENT };
 	struct dm_pool *mem = dms->mem, *group_mem = dms->group_mem;
 	char line[STATS_ROW_BUF_LEN];
 	FILE *list_rows;
@@ -1100,7 +1120,7 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 	if (!dm_pool_begin_object(group_mem, 32))
 		goto_bad;
 
-	while(fgets(line, sizeof(line), list_rows)) {
+	while (fgets(line, sizeof(line), list_rows)) {
 
 		cur_group.group_id = DM_STATS_GROUP_NOT_PRESENT;
 		cur_group.regions = NULL;
@@ -1109,51 +1129,39 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 		if (!_stats_parse_list_region(dms, &cur, line))
 			goto_bad;
 
-		if (cur.region_id < max_region) {
-			log_error("Out of order region_id " FMTu64
-				  " in @stats_list response.",
-				  cur.region_id);
-			goto_bad;
-		}
-
-		if (cur.region_id > STATS_LIST_MAX_REGION_INDEX) {
+		if (cur.region_id >= STATS_LIST_MAX_REGION_INDEX) {
 			log_error("region_id " FMTu64
 				  " too large in @stats_list response.",
 				  cur.region_id);
-			goto_bad;
+			goto bad;
 		}
 
-		/* handle holes in the list of region_ids */
-		if (cur.region_id > max_region) {
-			memset(&fill, 0, sizeof(fill));
-			memset(&cur_group, 0, sizeof(cur_group));
-			fill.region_id = DM_STATS_REGION_NOT_PRESENT;
-			cur_group.group_id = DM_STATS_GROUP_NOT_PRESENT;
-			while (max_region < cur.region_id) {
-				if (!dm_pool_grow_object(mem, &fill, sizeof(fill)))
-					goto_bad;
-				if (!dm_pool_grow_object(group_mem, &cur_group,
-							 sizeof(cur_group)))
-					goto_bad;
-				max_region++;
-			}
+		/* the kernel emits region_ids in ascending order */
+		if (cur.region_id < nr_entries) {
+			log_error("Out of order region_id " FMTu64
+				  " in @stats_list response.",
+				  cur.region_id);
+			goto bad;
 		}
 
-		if (cur.aux_data)
-			if (!_parse_aux_data_group(dms, &cur, &cur_group))
-				log_error("Failed to parse group descriptor "
-					  "from region_id " FMTu64 " aux_data:"
-					  "'%s'", cur.region_id, cur.aux_data);
-				/* continue */
+		/* fill holes in the list of region_ids */
+		while (nr_entries < cur.region_id) {
+			if (!_stats_list_grow(dms, &fill, &fill_group))
+				goto bad;
+			nr_entries++;
+		}
 
-		if (!dm_pool_grow_object(mem, &cur, sizeof(cur)))
-			goto_bad;
+		if (cur.aux_data &&
+		    !_parse_aux_data_group(dms, &cur, &cur_group))
+			log_warn("WARNING: Failed to parse group descriptor "
+				 "from region_id " FMTu64 " aux_data:"
+				 "'%s'", cur.region_id, cur.aux_data);
 
-		if (!dm_pool_grow_object(group_mem, &cur_group,
-					 sizeof(cur_group)))
-			goto_bad;
+		if (!_stats_list_grow(dms, &cur, &cur_group))
+			goto bad;
 
-		max_region++;
+		max_region = cur.region_id;
+		nr_entries++;
 		nr_regions++;
 	}
 
@@ -1162,7 +1170,7 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 		goto bad;
 
 	dms->nr_regions = nr_regions;
-	dms->max_region = max_region - 1;
+	dms->max_region = max_region;
 	dms->regions = dm_pool_end_object(mem);
 	dms->groups = dm_pool_end_object(group_mem);
 
