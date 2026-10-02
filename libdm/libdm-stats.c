@@ -1053,6 +1053,7 @@ static int _stats_parse_list_region(struct dm_stats *dms,
 
 	if (!(region->aux_data = dm_strdup(aux_data))) {
 		dm_free(region->program_id);
+		region->program_id = NULL;
 		return_0;
 	}
 
@@ -1122,9 +1123,9 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 
 	while (fgets(line, sizeof(line), list_rows)) {
 
-		cur_group.group_id = DM_STATS_GROUP_NOT_PRESENT;
-		cur_group.regions = NULL;
-		cur_group.alias = NULL;
+		cur_group = fill_group;
+		cur.program_id = NULL;
+		cur.aux_data = NULL;
 
 		if (!_stats_parse_list_region(dms, &cur, line))
 			goto_bad;
@@ -1187,6 +1188,8 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 bad:
 	if (fclose(list_rows))
 		stack;
+	dm_free(cur.program_id);
+	dm_free(cur.aux_data);
 	dm_pool_abandon_object(mem);
 	dm_pool_abandon_object(group_mem);
 
