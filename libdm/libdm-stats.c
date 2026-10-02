@@ -128,7 +128,7 @@ struct dm_stats {
 	struct dm_pool *hist_mem; /* separate pool for histogram tables */
 	struct dm_pool *group_mem; /* separate pool for group tables */
 	uint64_t nr_regions; /* total number of present regions */
-	uint64_t max_region; /* size of the regions table */
+	uint64_t max_region; /* highest region_id; table size is max_region + 1 */
 	uint64_t interval_ns;  /* sampling interval in nanoseconds */
 	uint64_t timescale; /* default sample value multiplier */
 	int precise; /* use precise_timestamps when creating regions */
