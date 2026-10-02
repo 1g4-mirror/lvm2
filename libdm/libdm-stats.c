@@ -342,14 +342,16 @@ static uint64_t _stats_region_is_grouped(const struct dm_stats* dms,
 static void _stats_histograms_destroy(struct dm_pool *mem,
 				      struct dm_stats_region *region)
 {
-	/* Unpopulated handle. */
-	if (!region->counters)
-		return;
-
 	/*
-	 * Free everything in the pool back to the first histogram.
+	 * Free everything in the pool from the first allocation owned by
+	 * this region: histogram bounds objects are added by
+	 * dm_stats_list() before the per-area histogram objects added by
+	 * dm_stats_populate(), so freeing from bounds releases both (the
+	 * region table is walked in reverse order by the caller).
 	 */
-	if (region->counters[0].histogram)
+	if (region->bounds)
+		dm_pool_free(mem, region->bounds);
+	else if (region->counters && region->counters[0].histogram)
 		dm_pool_free(mem, region->counters[0].histogram);
 }
 
