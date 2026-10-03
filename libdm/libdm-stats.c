@@ -733,7 +733,7 @@ static void _check_group_regions_present(struct dm_stats *dms,
 	 * word index expanded by the dm_bit_clear() below.
 	 */
 	for (i = dm_bit_get_first(regions);
-	     i >= 0 && (uint64_t) i < STATS_LIST_MAX_REGION_INDEX;
+	     i >= 0 && (uint64_t) i <= STATS_LIST_MAX_REGION_INDEX;
 	     i = dm_bit_get_next(regions, i))
 		if (!_stats_region_index_in_table(dms, i) ||
 		    !_stats_region_present(&dms->regions[i])) {
