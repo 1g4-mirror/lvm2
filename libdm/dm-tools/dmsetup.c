@@ -6007,8 +6007,6 @@ static int _dmsetup_help(CMD_ARGS);
 /*
  * Accept LVM name characters, excluding '/' so dm_task_set_name() cannot
  * interpret a name obtained from sysfs as a filesystem path.
- * Coverity does not model this as a sanitizer, so it is annotated to clear
- * the tainted-string taint on the validated name.
  */
 /* coverity[+tainted_string_sanitize_content:arg-0] */
 static int _vdo_dm_name_valid(const char *name)
