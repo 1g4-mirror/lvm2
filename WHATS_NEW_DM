@@ -1,5 +1,9 @@
 Version 1.02.218 - 
 ===================
+  Fix dmstats when a grouped region is removed with @stats_delete and the
+    group descriptor still lists the stale region id.
+  Fix dmstats histogram bounds leak when statistics regions are re-listed.
+  Validate dmsetup vdostats device name before use.
 
 Version 1.02.217 - 30th September 2026
 ======================================
