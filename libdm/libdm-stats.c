@@ -1168,7 +1168,7 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 		/* fill holes in the list of region_ids */
 		while (nr_entries < cur.region_id) {
 			if (!_stats_list_grow(dms, &fill, &fill_group))
-				goto bad;
+				goto_bad;
 			nr_entries++;
 		}
 
@@ -1179,16 +1179,17 @@ static int _stats_parse_list(struct dm_stats *dms, const char *resp)
 				 "'%s'", cur.region_id, cur.aux_data);
 
 		if (!_stats_list_grow(dms, &cur, &cur_group))
-			goto bad;
+			goto_bad;
 
 		max_region = cur.region_id;
 		nr_entries++;
 		nr_regions++;
 	}
 
-	if (!nr_regions)
-		/* no region data read from @stats_list */
+	if (!nr_regions) {
+		log_error("No region data in @stats_list response.");
 		goto bad;
+	}
 
 	dms->nr_regions = nr_regions;
 	dms->max_region = max_region;
