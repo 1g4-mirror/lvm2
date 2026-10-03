@@ -704,7 +704,7 @@ static void _stats_update_groups(struct dm_stats *dms)
 	uint64_t group_id;
 	int i; /* dm_bit_get_first/next return int, -1 == (int)DM_STATS_GROUP_NOT_PRESENT */
 
-	for (group_id = 0; group_id < dms->max_region + 1; group_id++) {
+	for (group_id = 0; group_id <= dms->max_region; group_id++) {
 		if (!_stats_group_id_present(dms, group_id))
 			continue;
 
