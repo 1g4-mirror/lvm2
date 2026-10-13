@@ -31,7 +31,7 @@
 struct sync_io {
 	struct dm_list list;
 	void *context;
-	int error;
+	int io_error;
 };
 
 struct sync_engine {
@@ -54,10 +54,7 @@ static bool _sync_destroy(struct io_engine *ioe)
 	return true;
 }
 
-static const char *_sync_dir(enum dir d)
-{
-	return (d == DIR_READ) ? "read" : "write";
-}
+static const char _sync[] = "sync";
 
 static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 			sector_t sb, sector_t se, void *data, void *context)
@@ -68,7 +65,7 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 	uint64_t len = (se - sb) << SECTOR_SHIFT;
 	struct sync_engine *e = _to_sync(ioe);
 	struct sync_io *io = malloc(sizeof(*io));
-	int error = 0;
+	int io_error = 0;
 
 	if (!io) {
 		log_warn("WARNING: bcache sync unable to allocate io buffer.");
@@ -89,11 +86,9 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 			if (errno == EINTR && !sigint_caught())
 				continue;
 
-			log_warn("WARNING: bcache sync %s device offset %llu len %llu: %s.",
-				 _sync_dir(d), (unsigned long long)offset,
-				 (unsigned long long)(len - pos),
-				 strerror(errno));
-			error = -errno;
+			io_error = bcache_io_completion_errno(_sync, d,
+							      offset + pos,
+							      len - pos, errno);
 			break;
 		}
 
@@ -103,23 +98,12 @@ static bool _sync_issue(struct io_engine *ioe, enum dir d, int fd,
 		pos += rv;
 	}
 
-	if (!error && pos < len) {
-		if (pos >= (1 << SECTOR_SHIFT)) {
-			/* minimum acceptable read is 1 sector */
-			log_debug_devs("bcache sync %s offset %llu requested %llu got %llu.",
-				       _sync_dir(d), (unsigned long long)offset,
-				       (unsigned long long)len, (unsigned long long)pos);
-		} else {
-			log_warn("WARNING: bcache sync %s offset %llu requested %llu got %llu.",
-				 _sync_dir(d), (unsigned long long)offset,
-				 (unsigned long long)len, (unsigned long long)pos);
-			error = -ENODATA;
-		}
-	}
+	if (!io_error && pos < len)
+		io_error = bcache_io_completion_status(_sync, d, offset, len, (int64_t) pos);
 
 	/* Always queue completion - errors reported via callback in wait() */
 	io->context = context;
-	io->error = error;
+	io->io_error = io_error;
 	dm_list_add(&e->complete, &io->list);
 
 	return true;
@@ -131,7 +115,7 @@ static bool _sync_wait(struct io_engine *ioe, io_complete_fn fn)
 	struct sync_engine *e = _to_sync(ioe);
 
 	dm_list_iterate_items_safe(io, tmp, &e->complete) {
-		fn(io->context, io->error);
+		fn(io->context, io->io_error);
 		dm_list_del(&io->list);
 		free(io);
 	}
