@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 void bcache_threads_test_hold(int hold);
+void bcache_threads_test_fail_create_after(int count);
 
 //----------------------------------------------------------------
 
@@ -112,6 +113,7 @@ static void _fix_exit(void *fixture)
 	struct fixture *f = fixture;
 
 	bcache_threads_test_hold(0);
+	bcache_threads_test_fail_create_after(-1);
 
 	if (f) {
 		(void) close(f->fd);
@@ -486,6 +488,25 @@ static void _test_destroy_inflight_threads(void *fixture)
 	_destroy_after_issue(create_threads_io_engine(2), f->fd, f->data);
 }
 
+static void _test_threads_partial_create_failure(void *fixture)
+{
+	struct io_engine *e;
+
+	(void) fixture;
+
+	bcache_threads_test_fail_create_after(1);
+	alarm(5);
+	e = create_threads_io_engine(2);
+	alarm(0);
+	bcache_threads_test_fail_create_after(-1);
+	T_ASSERT(!e);
+
+	/* A later creation must still work after the partially built pool exits. */
+	e = create_threads_io_engine(2);
+	T_ASSERT(e);
+	T_ASSERT(e->destroy(e));
+}
+
 #ifdef HAVE_LIBAIO_H
 static void _test_destroy_inflight_async(void *fixture)
 {
@@ -616,6 +637,7 @@ static struct test_suite *_tests(void)
 	T("short-read-threads", "short read handled by threads engine", _test_short_read_threads);
 	T("destroy-inflight-sync", "sync destroy frees issued io", _test_destroy_inflight_sync);
 	T("destroy-inflight-threads", "threads destroy joins issued io", _test_destroy_inflight_threads);
+	T("threads-partial-create-failure", "threads clean up after partial worker creation", _test_threads_partial_create_failure);
 	T("threads-inflight-int", "threads wait and destroy while pread blocked", _test_threads_inflight_int);
 #ifdef HAVE_LIBURING_H
 	T("read-uring", "io_uring read sanity check", _test_read_uring);
