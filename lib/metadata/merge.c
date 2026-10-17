@@ -711,7 +711,8 @@ int check_lv_segments_complete_vg(struct logical_volume *lv)
 	     lv_is_thin_pool(lv) ||
 	     lv_is_thin_volume(lv) ||
 	     lv_is_vdo_pool(lv) ||
-	     lv_is_vdo(lv))) {
+	     lv_is_vdo(lv) ||
+	     lv_is_writecache(lv))) {
 		log_error("LV %s must have exactly one segment.",
 			  lv->name);
 		inc_error_count;
