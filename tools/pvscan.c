@@ -100,7 +100,7 @@ static int _pvscan_display_pv(struct cmd_context *cmd,
 						(int) pv_len, pvdevname,
 						(int) params->vg_max_name_len, pv_vg_name(pv));
 			}
-		} else if (!(dev->flags & DEV_MATCHED_USE_ID)) {
+		} else if (!dev || !(dev->flags & DEV_MATCHED_USE_ID)) {
 			if (is_orphan(pv)) {
 				log_print_unless_silent("PV %-*s    %-*s %-10s %s",
 						(int) pv_len, pvdevname,
