@@ -621,7 +621,12 @@ static struct dm_config_node *_section(struct parser *p, struct dm_config_node *
 	struct dm_config_value *value;
 	char *str;
 	size_t len;
-	char buf[8192];
+	/*
+	 * Keep small: _section() recurses up to MAX_SECTION_DEPTH and
+	 * also runs on dmeventd's 300KiB monitoring thread stacks.
+	 * Longer identifiers fall back to a pool allocation.
+	 */
+	char buf[256];
 
 	if (p->t == TOK_STRING_ESCAPED) {
 		if (!(str = _dup_string_tok(p)))
