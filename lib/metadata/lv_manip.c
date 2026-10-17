@@ -1350,6 +1350,12 @@ int set_lv_segment_area_lv(struct lv_segment *seg, uint32_t area_num,
 	}
 	lv->status |= status;
 	if (lv_is_raid_metadata(lv)) {
+		if (!seg->meta_areas) {
+			log_error("Cannot use RAID metadata LV %s in %s segment of LV %s.",
+				  display_lvname(lv), lvseg_name(seg),
+				  display_lvname(seg->lv));
+			return 0;
+		}
 		seg->meta_areas[area_num].type = AREA_LV;
 		seg_metalv(seg, area_num) = lv;
 		if (le) {
