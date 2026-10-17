@@ -1721,6 +1721,8 @@ static void _free_vginfo(struct lvmcache_vginfo *vginfo)
  */
 static void _drop_vginfo(struct lvmcache_info *info, struct lvmcache_vginfo *vginfo)
 {
+	struct lvmcache_info *outdated, *outdated2;
+
 	if (info)
 		_vginfo_detach_info(info);
 
@@ -1728,6 +1730,17 @@ static void _drop_vginfo(struct lvmcache_info *info, struct lvmcache_vginfo *vgi
 	if (!vginfo || is_orphan_vg(vginfo->vgname) ||
 	    !dm_list_empty(&vginfo->infos))
 		return;
+
+	/*
+	 * Outdated infos (moved off vginfo->infos by
+	 * lvmcache_update_vg_from_read) stay in the pvid hash with
+	 * info->vginfo NULL, but their list links still point at
+	 * vginfo->outdated_infos.  Unlink them before the list head
+	 * is freed, otherwise a later _vginfo_detach_info() on one
+	 * of them writes into freed memory.
+	 */
+	dm_list_iterate_items_safe(outdated, outdated2, &vginfo->outdated_infos)
+		_vginfo_detach_info(outdated);
 
 	if (dm_hash_lookup(_vgname_hash, vginfo->vgname) == vginfo)
 		dm_hash_remove(_vgname_hash, vginfo->vgname);
