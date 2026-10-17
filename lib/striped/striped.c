@@ -68,6 +68,13 @@ static int _striped_text_import_area_count(const struct dm_config_node *sn, uint
 		return 0;
 	}
 
+	/* area_len is divided by area_count on import */
+	if (!*area_count) {
+		log_error("Zero 'stripe_count' not allowed for "
+			  "segment '%s'.", dm_config_parent_name(sn));
+		return 0;
+	}
+
 	return 1;
 }
 
