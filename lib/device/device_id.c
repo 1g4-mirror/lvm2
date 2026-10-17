@@ -3507,6 +3507,7 @@ void device_ids_validate(struct cmd_context *cmd, struct dm_list *scanned_devs, 
 			log_debug("Drop incorrectly matched %s", dev_name(devl->dev));
 			cmd->filter->wipe(cmd, cmd->filter, devl->dev, NULL);
 			lvmcache_del_dev(devl->dev);
+			lvmcache_del_dev_from_duplicates(devl->dev);
 		}
 	}
 
@@ -3877,6 +3878,7 @@ void device_ids_check_serial(struct cmd_context *cmd, struct dm_list *scan_devs,
 			log_debug("Drop incorrectly matched serial %s", dev_name(dil->dev));
 			cmd->filter->wipe(cmd, cmd->filter, dil->dev, NULL);
        			lvmcache_del_dev(dil->dev);
+			lvmcache_del_dev_from_duplicates(dil->dev);
 		}
 	}
 

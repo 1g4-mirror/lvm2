@@ -178,10 +178,12 @@ void lvmcache_del_dev_from_duplicates(struct device *dev)
 	if ((devl = device_list_find_dev(&_initial_duplicates, dev))) {
 		log_debug_cache("delete dev from initial duplicates %s", dev_name(dev));
 		dm_list_del(&devl->list);
+		free(devl);
 	}
 	if ((devl = device_list_find_dev(&_unused_duplicates, dev))) {
 		log_debug_cache("delete dev from unused duplicates %s", dev_name(dev));
 		dm_list_del(&devl->list);
+		free(devl);
 	}
 }
 
