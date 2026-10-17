@@ -546,6 +546,24 @@ static int _cleanup_failed_mirrored_log(struct logical_volume *lv,
 
 	seg = first_seg(detached_log_lv);
 
+	/*
+	 * MIRRORED flag is set when any segment of the LV is mirrored,
+	 * mirrored log must be a single mirror segment of image LVs.
+	 */
+	if ((dm_list_size(&detached_log_lv->segments) != 1) ||
+	    !seg_is_mirrored(seg)) {
+		log_error("Mirrored log %s is not a single mirror segment.",
+			  display_lvname(detached_log_lv));
+		return 0;
+	}
+
+	for (m = 0; m < seg->area_count; m++)
+		if (seg_type(seg, m) != AREA_LV) {
+			log_error("Mirrored log %s image %u is not a logical volume.",
+				  display_lvname(detached_log_lv), m);
+			return 0;
+		}
+
 	log_very_verbose("%s being removed due to failures.",
 			 display_lvname(detached_log_lv));
 
