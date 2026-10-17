@@ -1106,7 +1106,9 @@ static int _config_def_check_node(struct cft_check_handle *handle,
 		/* If the node is a section, try if the section name is variable. */
 		/* Modify virtual path vp in situ and replace the key name with a '#'. */
 		/* The real path without '#' is still stored in rp variable. */
-		pvp[sep] = '#', pvp[sep + 1] = '\0';
+		/* Empty key has no name to replace: vp must not get longer than rp. */
+		if (*cn->key)
+			pvp[sep] = '#', pvp[sep + 1] = '\0';
 		if (!(def = (cfg_def_item_t *) dm_hash_lookup(handle->cmd->cft_def_hash, vp))) {
 			log_warn_suppress(handle->suppress_messages,
 				"Configuration section \"%s\" unknown.", rp);
@@ -1167,7 +1169,7 @@ static int _config_def_check_tree(struct cft_check_handle *handle,
 	for (cn = root->child; cn; cn = cn->sib) {
 		if ((valid = _config_def_check_node(handle, vp, pvp, rp, prp,
 						    buf_size, cn)) && !cn->v) {
-			len = strlen(rp);
+			len = strlen(prp);
 			valid = _config_def_check_tree(handle, vp, pvp + strlen(pvp),
 						       rp, prp + len, buf_size - len, cn);
 		}
