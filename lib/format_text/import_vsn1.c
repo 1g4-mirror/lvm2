@@ -622,6 +622,17 @@ static int _read_segments(struct cmd_context *cmd,
 	}
 
 	/*
+	 * Validation tolerates an empty pvmove LV while it is being set up
+	 * in memory, but stored metadata never has an LV without extents.
+	 * Without this an on-disk LV named pvmoveN is imported with a NULL
+	 * first segment and later dereferences crash the command.
+	 */
+	if (!lv->le_count) {
+		log_error("Logical volume %s has no segment.", lv->name);
+		return 0;
+	}
+
+	/*
 	 * Check there are no gaps or overlaps in the lv.
 	 */
 	if (!check_lv_segments_incomplete_vg(lv))
