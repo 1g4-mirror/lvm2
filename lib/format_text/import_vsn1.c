@@ -193,6 +193,13 @@ static int _read_pv(struct cmd_context *cmd,
 
 	pv = pvl->pv;
 
+	/* Section name is written as pv%d, do not accept anything unbounded */
+	if (!validate_name(pvn->key)) {
+		log_error("Invalid physical volume section name in volume group %s.",
+			  vg->name);
+		return 0;
+	}
+
 	/*
 	 * Add the pv to the pv hash for quick lookup when we read
 	 * the lv segments.
@@ -644,6 +651,12 @@ static int _read_lvnames(struct cmd_context *cmd,
 	const char *hostname;
 	uint64_t timestamp = 0, lvstatus;
 
+	if (!validate_name(lvn->key)) {
+		log_error("Invalid logical volume name in volume group %s.",
+			  vg->name);
+		return 0;
+	}
+
 	if (!(lv = alloc_lv(mem)))
 		return_0;
 
@@ -809,6 +822,12 @@ static int _read_historical_lvnames(struct cmd_context *cmd,
 	glv->historical->vg = vg;
 	dm_list_init(&glv->historical->indirect_glvs);
 
+	if (!validate_name(hlvn->key)) {
+		log_error("Invalid removed logical volume name in volume group %s.",
+			  vg->name);
+		goto bad;
+	}
+
 	if (!(glv->historical->name = dm_pool_strdup(mem, hlvn->key)))
 		goto_bad;
 
@@ -825,6 +844,11 @@ static int _read_historical_lvnames(struct cmd_context *cmd,
 	memcpy(&glv->historical->lvid.id[0], &glv->historical->vg->id, sizeof(glv->historical->lvid.id[0]));
 
 	if (dm_config_get_str(hlvn, "name", &str)) {
+		if (!validate_name(str)) {
+			log_error("Invalid name for removed logical volume %s in vg %s.",
+				  glv->historical->name, vg->name);
+			goto bad;
+		}
 		if (!(glv->historical->name = dm_pool_strdup(mem, str)))
 			goto_bad;
 	}
@@ -1077,6 +1101,11 @@ static struct volume_group *_read_vg(struct cmd_context *cmd,
 
 	if (!vgn) {
 		log_error("Couldn't find volume group in file.");
+		return NULL;
+	}
+
+	if (!validate_name(vgn->key)) {
+		log_error("Invalid volume group name in metadata.");
 		return NULL;
 	}
 
