@@ -622,6 +622,7 @@ static struct dm_config_node *_section(struct parser *p, struct dm_config_node *
 	const char *te;
 	char *str;
 	size_t len;
+	unsigned depth;
 	/*
 	 * Keep small: _section() recurses up to MAX_SECTION_DEPTH and
 	 * also runs on dmeventd's 300KiB monitoring thread stacks.
@@ -660,27 +661,33 @@ static struct dm_config_node *_section(struct parser *p, struct dm_config_node *
 		return NULL;
 	}
 
+	/* Every '/' in identifier nests a section just like SECTION_B_CHAR */
+	depth = dm_count_chars(str, strlen(str), '/');
+	if (p->t == TOK_SECTION_B)
+		depth++;
+
+	if (depth > (MAX_SECTION_DEPTH - p->depth)) {
+		log_error("Parse error at byte %" PRIptrdiff_t " (line %d): "
+			  "maximum section nesting depth exceeded.",
+			  p->tb - p->fb + 1, p->line);
+		return NULL;
+	}
+
 	if (!(root = _find_or_make_node(p->mem, parent, str, p->no_dup_node_check)))
 		return_NULL;
 
 	if (p->t == TOK_SECTION_B) {
-		if (p->depth >= MAX_SECTION_DEPTH) {
-			log_error("Parse error at byte %" PRIptrdiff_t " (line %d): "
-				  "maximum section nesting depth exceeded.",
-				  p->tb - p->fb + 1, p->line);
-			return NULL;
-		}
 		if (p->stop_after_section)
 			++p->section_indent;
 		match(TOK_SECTION_B);
-		p->depth++;
+		p->depth += depth;
 		while (p->t != TOK_SECTION_E) {
 			if (!(_section(p, root))) {
-				p->depth--;
+				p->depth -= depth;
 				return_NULL;
 			}
 		}
-		p->depth--;
+		p->depth -= depth;
 		match(TOK_SECTION_E);
 		if (p->stop_after_section && (--p->section_indent == 1)) {
 			if (!strcmp(str, p->stop_after_section)) {
