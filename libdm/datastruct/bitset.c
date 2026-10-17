@@ -201,6 +201,10 @@ scan:
 			if (!isdigit((unsigned char) c))
 				goto_bad;
 
+			/* Bit numbers are int in the rest of the bitset API */
+			if (b > (INT_MAX - (c - '0')) / 10)
+				goto_bad;
+
 			b = b * 10 + (c - '0');
 			if (!in_range)
 				a = b;
