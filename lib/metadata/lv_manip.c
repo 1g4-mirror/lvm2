@@ -7329,9 +7329,13 @@ int lv_resize(struct cmd_context *cmd, struct logical_volume *lv,
 	/*
 	 * Remove any striped raid reshape space for LV resizing (not common).
 	 */
-	if (lv_meta && first_seg(lv_meta)->reshape_len && !lv_raid_free_reshape_space(lv_meta))
+	if (lv_meta && lv_is_raid(lv_meta) &&
+	    first_seg(lv_meta)->reshape_len &&
+	    !lv_raid_free_reshape_space(lv_meta))
 		goto_out;
-	if (lv_main && first_seg(lv_main)->reshape_len && !lv_raid_free_reshape_space(lv_main))
+	if (lv_main && lv_is_raid(lv_main) &&
+	    first_seg(lv_main)->reshape_len &&
+	    !lv_raid_free_reshape_space(lv_main))
 		goto_out;
 
 	/*
@@ -8069,7 +8073,7 @@ int lv_remove_single(struct cmd_context *cmd, struct logical_volume *lv,
 		return_0;
 
 	/* Special case removing a striped raid LV with allocated reshape space */
-	if (seg && seg->reshape_len) {
+	if (seg && seg_is_raid(seg) && seg->reshape_len) {
 		if (!(seg->segtype = get_segtype_from_string(cmd, SEG_TYPE_NAME_STRIPED)))
 			return_0;
 		lv->le_count = seg->len = seg->area_len = seg_lv(seg, 0)->le_count * seg->area_count;

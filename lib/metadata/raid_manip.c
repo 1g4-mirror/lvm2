@@ -1824,6 +1824,13 @@ static int _lv_free_reshape_space_with_status(struct logical_volume *lv, enum al
 	struct lv_segment *seg = first_seg(lv);
 
 	if ((total_reshape_len = _reshape_len_per_lv(lv))) {
+		/* Only RAID segments have image SubLVs holding reshape space */
+		if (!seg_is_raid(seg)) {
+			log_error("Can't free reshape space of %s LV %s.",
+				  lvseg_name(seg), display_lvname(lv));
+			return 0;
+		}
+
 		/*
 		 * raid10:
 		 *
