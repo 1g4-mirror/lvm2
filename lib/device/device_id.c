@@ -815,8 +815,10 @@ static int _dev_read_sys_serial(struct cmd_context *cmd, struct device *dev,
 			return 1;
 	}
 
+	/* An LV in a VG named vd* (/dev/vdx/lv) is a dm device, not a virtio disk. */
 	devname = dev_name(dev);
-	if (!strncmp(devname, "/dev/vd", 7)) {
+	if (!strncmp(devname, "/dev/vd", sizeof("/dev/vd") - 1) &&
+	    (MAJOR(dev->dev) != cmd->dev_types->device_mapper_major)) {
 		char path[PATH_MAX];
 		char vdx[8] = { 0 };
 		const char *sysfs_dir;
@@ -831,6 +833,8 @@ static int _dev_read_sys_serial(struct cmd_context *cmd, struct device *dev,
 		for (i = 0; base[i]; ++i) {
 			if (isdigit((unsigned char) base[i]))
 				break;
+			if (j >= sizeof(vdx) - 1)
+				return 0;
 			vdx[j] = base[i];
 			j++;
 		}
