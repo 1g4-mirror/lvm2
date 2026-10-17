@@ -1385,8 +1385,8 @@ static int _create_mimage_lvs(struct alloc_handle *ah,
 }
 
 /*
- * Validate that all segments in an LV are mirrored and optionally
- * have required status bits set.
+ * Validate that all segments in an LV are mirrored with the same
+ * number of areas and optionally have required status bits set.
  */
 static int _validate_mirror_segments(struct logical_volume *lv,
 				     uint64_t required_status_mask)
@@ -1397,6 +1397,14 @@ static int _validate_mirror_segments(struct logical_volume *lv,
 		if (!seg_is_mirrored(seg)) {
 			log_error("Segment is not mirrored: %s:%u",
 				  display_lvname(lv), seg->le);
+			return 0;
+		}
+
+		/* lv_mirror_count() looks only at the first segment */
+		if (seg->area_count != first_seg(lv)->area_count) {
+			log_error("Segment mirror count does not match: %s:%u"
+				  " %u/%u", display_lvname(lv), seg->le,
+				  seg->area_count, first_seg(lv)->area_count);
 			return 0;
 		}
 

@@ -2290,7 +2290,6 @@ int vg_validate(struct volume_group *vg)
 	struct lv_list *lvl;
 	struct glv_list *glvl;
 	struct historical_logical_volume *hlv;
-	struct lv_segment *seg;
 	char uuid[64] __attribute__((aligned(8)));
 	char uuid2[64] __attribute__((aligned(8)));
 	int r = 1, rt;
@@ -2539,28 +2538,6 @@ int vg_validate(struct volume_group *vg)
 	if (!_lv_postorder_vg(vg, _lv_validate_references_single, &vhash)) {
 		stack;
 		r = 0;
-	}
-
-	dm_list_iterate_items(lvl, &vg->lvs) {
-		if (!lv_is_pvmove(lvl->lv))
-			continue;
-		dm_list_iterate_items(seg, &lvl->lv->segments) {
-			if (seg_is_error(seg))
-				continue;
-			if (seg_is_mirrored(seg)) {
-				if (seg->area_count != 2) {
-					log_error(INTERNAL_ERROR
-						  "Segment in %s is not 2-way.",
-						  lvl->lv->name);
-					r = 0;
-				}
-			} else if (seg->area_count != 1) {
-				log_error(INTERNAL_ERROR
-					  "Segment in %s has wrong number of areas: %u.",
-					  lvl->lv->name, seg->area_count);
-				r = 0;
-			}
-		}
 	}
 
 	if (!(vg->fid->fmt->features & FMT_UNLIMITED_VOLS) &&

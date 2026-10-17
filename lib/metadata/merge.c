@@ -471,6 +471,14 @@ static void _check_lv_segment(struct logical_volume *lv, struct lv_segment *seg,
 		}
 	}
 
+	if (lv_is_pvmove(lv) && !seg_is_error(seg)) {
+		if (seg_is_mirrored(seg)) {
+			if (seg->area_count != 2)
+				seg_error("pvmove is not 2-way");
+		} else if (seg->area_count != 1)
+			seg_error("pvmove has wrong number of areas");
+	}
+
 	if (seg_is_raid(seg))
 		_check_raid_seg(seg, error_count);
 	else if (!lv_is_raid_type(lv) &&
