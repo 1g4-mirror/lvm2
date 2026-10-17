@@ -72,7 +72,8 @@ static int _integrity_text_import(struct lv_segment *seg,
 	if (!dm_config_get_str(sn, "mode", &mode))
 		return SEG_LOG_ERROR("integrity mode must be set in");
 
-	if (strlen(mode) > 7)
+	/* mode and internal_hash are each a single word of the dm table line */
+	if (strlen(mode) > 7 || !validate_name(mode))
 		return SEG_LOG_ERROR("integrity mode invalid in");
 
 	strncpy(set->mode, mode, 7);
@@ -91,6 +92,9 @@ static int _integrity_text_import(struct lv_segment *seg,
 
 	if (!dm_config_get_str(sn, "internal_hash", &hash))
 		return SEG_LOG_ERROR("integrity internal_hash must be set in");
+
+	if (!validate_name(hash))
+		return SEG_LOG_ERROR("integrity internal_hash invalid in");
 
 	if (!(set->internal_hash = dm_pool_strdup(seg->lv->vg->vgmem, hash)))
 		return SEG_LOG_ERROR("integrity internal_hash failed to be set in");

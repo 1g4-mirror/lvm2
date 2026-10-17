@@ -136,6 +136,9 @@ static int _settings_text_import(struct lv_segment *seg,
 	if (dm_config_has_node(sn, "policy")) {
 		if (!(str = dm_config_find_str(sn, "policy", NULL)))
 			return SEG_LOG_ERROR("policy must be a string in");
+		/* policy is a single word of the dm table line */
+		if (!validate_name(str))
+			return SEG_LOG_ERROR("Invalid policy in");
 		if (!(seg->policy_name = dm_pool_strdup(mem, str)))
 			return SEG_LOG_ERROR("Failed to duplicate policy in");
 	}

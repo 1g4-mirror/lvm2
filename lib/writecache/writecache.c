@@ -153,6 +153,9 @@ static int _writecache_text_import(struct lv_segment *seg,
 			return SEG_LOG_ERROR("Unknown writecache_setting in");
 		if (!dm_config_get_str(sn, "writecache_setting_val", &val))
 			return SEG_LOG_ERROR("Unknown writecache_setting in");
+		/* key and val are each a single word of the dm table line */
+		if (!validate_name(key) || !validate_name(val))
+			return SEG_LOG_ERROR("Invalid writecache_setting in");
 
 		seg->writecache_settings.new_key = dm_pool_strdup(seg->lv->vg->vgmem, key);
 		seg->writecache_settings.new_val = dm_pool_strdup(seg->lv->vg->vgmem, val);
