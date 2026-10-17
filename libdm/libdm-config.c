@@ -619,6 +619,7 @@ static struct dm_config_node *_section(struct parser *p, struct dm_config_node *
 
 	struct dm_config_node *root;
 	struct dm_config_value *value;
+	const char *te;
 	char *str;
 	size_t len;
 	/*
@@ -685,11 +686,13 @@ static struct dm_config_node *_section(struct parser *p, struct dm_config_node *
 			if (!strcmp(str, p->stop_after_section)) {
 				/* Found stopping section name -> parsing is finished.
 				 * Now try to find the sequence "\n}\n" from end of b
-				 * parsed buffer to continue filling remaining nodes */
-				for (p->te = p->fe - 1; p->te > p->tb; --p->te)
-					if ((p->te[-2] == '\n') &&
-					    (p->te[-1] == '}') &&
-					    (p->te[ 0] == '\n')) {
+				 * parsed buffer to continue filling remaining nodes.
+				 * When missing, keep current token and parse the rest. */
+				for (te = p->fe - 1; te > p->tb; --te)
+					if ((te[-2] == '\n') &&
+					    (te[-1] == '}') &&
+					    (te[ 0] == '\n')) {
+						p->te = te;
 						p->t = TOK_SECTION_E;
 						break;
 					}
