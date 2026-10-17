@@ -211,7 +211,11 @@ static int _mirrored_transient_status(struct dm_pool *mem, struct lv_segment *se
 	}
 
 	if (!strcmp(sm->log_type, "disk")) {
-		log = first_seg(lv)->log_lv;
+		if (!(log = seg->log_lv)) {
+			log_error("Active mirror %s has a disk log, but metadata has none.",
+				  display_lvname(lv));
+			goto out;
+		}
 		if (!lv_info(lv->vg->cmd, log, 0, &info, 0, 0) || !info.exists) {
 			log_error("Check for existence of mirror log %s failed.",
 				  display_lvname(log));
