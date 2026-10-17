@@ -329,12 +329,22 @@ static int _write_value(struct config_output *out, const struct dm_config_value 
 {
 	char *buf;
 	const char *s;
+	int r;
 
 	switch (v->type) {
 	case DM_CFG_STRING:
-		buf = alloca(dm_escaped_len(v->v.str));
+		/* A string may be arbitrarily long (e.g. from metadata),
+		 * so keep the buffer off the stack. */
+		if (!(buf = dm_malloc(dm_escaped_len(v->v.str)))) {
+			log_error("Failed to allocate buffer for config string.");
+			return 0;
+		}
 		s = (v->format_flags & DM_CONFIG_VALUE_FMT_STRING_NO_QUOTES) ? "" : "\"";
-		line_append("%s%s%s", s, dm_escape_double_quotes(buf, v->v.str), s);
+		r = _line_append(out, "%s%s%s", s,
+				 dm_escape_double_quotes(buf, v->v.str), s);
+		dm_free(buf);
+		if (!r)
+			return_0;
 		break;
 
 	case DM_CFG_FLOAT:
@@ -368,8 +378,8 @@ static int _write_config(const struct dm_config_node *n, int only_one,
 	int format_array;
 	char space[MAX_INDENT + 1];
 	int l = (level < MAX_INDENT) ? level : MAX_INDENT;
-	int i;
-	char *escaped_key = NULL;
+	int i, r;
+	char *escaped_key;
 
 	if (!n)
 		return 1;
@@ -388,16 +398,19 @@ static int _write_config(const struct dm_config_node *n, int only_one,
 		if (!_line_start(out))
 			return_0;
 		if (strchr(n->key, '#') || strchr(n->key, '"') || strchr(n->key, '!')) {
-			size_t elen;
-			escaped_key = alloca(dm_escaped_len(n->key) + 2);
-			*escaped_key = '"';
-			dm_escape_double_quotes(escaped_key + 1, n->key);
-			elen = strlen(escaped_key);
-			escaped_key[elen] = '"';
-			escaped_key[elen + 1] = '\0';
-		}
-		line_append("%s%s", space, escaped_key ? escaped_key : n->key);
-		escaped_key = NULL;
+			/* A key may be arbitrarily long (e.g. from metadata),
+			 * so keep the buffer off the stack. */
+			if (!(escaped_key = dm_malloc(dm_escaped_len(n->key)))) {
+				log_error("Failed to allocate buffer for config key.");
+				return 0;
+			}
+			r = _line_append(out, "%s\"%s\"", space,
+					 dm_escape_double_quotes(escaped_key, n->key));
+			dm_free(escaped_key);
+			if (!r)
+				return_0;
+		} else
+			line_append("%s%s", space, n->key);
 		if (!n->v) {
 			/* it's a sub section */
 			line_append(" {");
