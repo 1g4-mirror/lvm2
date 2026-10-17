@@ -92,7 +92,8 @@ static int _vdo_text_import(struct lv_segment *seg,
 	if (!dm_config_get_uint32(n, "vdo_offset", &vdo_offset))
 		return _bad_field("vdo_offset");
 
-	if (!set_lv_segment_area_lv(seg, 0, vdo_pool_lv, vdo_offset, LV_VDO_POOL))
+	/* LV_VDO_POOL is set only when importing vdo-pool segment */
+	if (!set_lv_segment_area_lv(seg, 0, vdo_pool_lv, vdo_offset, 0))
 		return_0;
 
 	seg->lv->status |= LV_VDO;
