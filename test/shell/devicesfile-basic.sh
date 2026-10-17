@@ -377,6 +377,19 @@ grep "$dev4" out
 grep "$dev5" out
 grep "$dev6" out
 
+# pvscan --allpvs sees all, including a PV with no device
+pvscan --allpvs |tee out
+grep "$dev1" out
+grep "$dev3" out
+grep "$dev5" out
+grep "$dev6" out
+aux disable_dev "$dev6"
+pvscan --allpvs |tee out
+grep "$dev5" out
+not grep "$dev6" out
+grep unknown out
+aux enable_dev "$dev6"
+
 vgchange -ay
 lvs --devicesfile test.devices -o active $vg1/$lv1 |tee out
 not grep active out
