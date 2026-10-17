@@ -3367,6 +3367,14 @@ static int _dm_tree_revert_activated(struct dm_tree_node *dnode)
 				log_debug_activation("Unable to deactivate %s.", _node_name(child));
 				return 0;
 			}
+
+			/*
+			 * Device is gone and kernel may reuse its device number
+			 * for any other device, so forget it here: never remove
+			 * it again nor reference it in any table line.
+			 */
+			child->activated = 0;
+			memset(&child->info, 0, sizeof(child->info));
 		}
 
 		if (dm_tree_node_num_children(child, 0) &&
@@ -3449,13 +3457,15 @@ int dm_tree_preload_children(struct dm_tree_node *dnode,
 		    !_load_node(child)) {
 			stack;
 			/*
-			 * If the table load fails, try to device in the kernel
+			 * If the table load fails, try to remove device in the kernel
 			 * together with other created and preloaded devices.
+			 * Remaining children may depend on reverted devices,
+			 * so stop preloading here.
 			 */
 			if (!_dm_tree_wait_and_revert_activated(dnode))
 				stack;
 			r = 0;
-			continue;
+			break;
 		}
 
 		/*
@@ -3491,7 +3501,7 @@ int dm_tree_preload_children(struct dm_tree_node *dnode,
 			if (!_dm_tree_wait_and_revert_activated(dnode))
 				stack;
 			r = 0;
-			continue;
+			break;
 		}
 		child->suspended_locally = 0;
 
@@ -3503,7 +3513,7 @@ int dm_tree_preload_children(struct dm_tree_node *dnode,
 				if (!_dm_tree_wait_and_revert_activated(dnode))
 					stack;
 				r = 0;
-				continue;
+				break;
 			}
 		}
 
