@@ -1,3 +1,7 @@
+Version 2.03.43 - 
+==================
+  Wipe stale signatures before formatting a VDO data LV on thin storage.
+
 Version 2.03.39 - 
 ==================
   Preserve file desciptors with CLOEXEC opened in library constructors.
