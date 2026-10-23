@@ -680,6 +680,7 @@ SELINUX_STATIC_LIBS
 SELINUX_PC
 SD_NOTIFY_SUPPORT
 SBINDIR
+RUN_DIR
 RT_LIBS
 PYTHON3DIR
 PYTHON3
@@ -3395,8 +3396,8 @@ ac_cxx_conftest_cxx11_main='
 }
 {
   // Unicode literals
-  char const *utf8 = u8"UTF-8 string \u2500";
-  char16_t const *utf16 = u"UTF-8 string \u2500";
+  auto const *utf8 = u8"UTF-8 string \u2500";
+  char16_t const *utf16 = u"UTF-16 string \u2500";
   char32_t const *utf32 = U"UTF-32 string \u2500";
 }
 '
@@ -16719,6 +16720,7 @@ AIO_LIBS=${AIO_LIBS:--laio}
 
 
 ################################################################################
+
 
 
 
