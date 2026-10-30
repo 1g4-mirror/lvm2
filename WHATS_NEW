@@ -1,3 +1,10 @@
+Version 2.03.45 - 
+==================
+  Skip kernel VDO formatting in test mode for pool creation and conversion.
+  Round up and size extended RAID integrity metadata with image journal.
+  Fit percentage-sized RAID integrity LVs with their metadata.
+  Explain RAID extend failures when images share a PV or PVs differ.
+
 Version 2.03.44 - 27th October 2026
 ===================================
   Round non-power-of-two VDO slab size up to a power of two in lvcreate.
