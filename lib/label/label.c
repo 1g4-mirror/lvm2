@@ -2078,9 +2078,17 @@ void dev_set_last_byte(struct device *dev, uint64_t offset)
 			  physical_block_size, logical_block_size);
 		bs = 512;
 	} else if ((physical_block_size == 4096) || (logical_block_size == 4096)) {
-		log_debug("Set last byte mixed block sizes physical %u logical %u using 4096",
-			  physical_block_size, logical_block_size);
-		bs = 4096;
+		/*
+		 * Use the logical block size, not 4096.  With 1024 or 2048
+		 * byte logical blocks, the first PE can start at an offset
+		 * that is not a multiple of 4096, and rounding up to 4096
+		 * would overwrite its start with data read earlier.
+		 * device-mapper maps PEs only at multiples of the logical
+		 * block size, so rounding up to that never reaches a PE in use.
+		 */
+		bs = logical_block_size ? logical_block_size : 4096;
+		log_debug("Set last byte mixed block sizes physical %u logical %u using %u",
+			  physical_block_size, logical_block_size, bs);
 	} else {
 		log_debug("Set last byte mixed block sizes physical %u logical %u using 512",
 			  physical_block_size, logical_block_size);
