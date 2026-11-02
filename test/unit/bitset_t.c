@@ -141,6 +141,23 @@ static void test_and(void *fixture)
 		T_ASSERT(!dm_bit(bs3, i));
 }
 
+static void test_parse_list(void *fixture)
+{
+	struct dm_pool *mem = fixture;
+	dm_bitset_t bs;
+
+	/* A bit number is an int in the rest of the API, so a larger value
+	 * must be refused rather than wrapping the mask size to zero. */
+	T_ASSERT(!dm_bitset_parse_list("4294967295", mem, 0));
+	T_ASSERT(!dm_bitset_parse_list("0-4294967295", mem, 0));
+
+	T_ASSERT((bs = dm_bitset_parse_list("0-7,16", mem, 0)));
+	T_ASSERT(dm_bit(bs, 0));
+	T_ASSERT(dm_bit(bs, 7));
+	T_ASSERT(!dm_bit(bs, 8));
+	T_ASSERT(dm_bit(bs, 16));
+}
+
 #define T(path, desc, fn) register_test(ts, "/base/data-struct/bitset/" path, desc, fn)
 
 void bitset_tests(struct dm_list *all_tests)
@@ -154,6 +171,7 @@ void bitset_tests(struct dm_list *all_tests)
 	T("get_next", "get next set bit", test_get_next);
 	T("equal", "equality", test_equal);
 	T("and", "and all bits", test_and);
+	T("parse_list", "parse a list of bit numbers", test_parse_list);
 
 	dm_list_add(all_tests, &ts->list);
 }
