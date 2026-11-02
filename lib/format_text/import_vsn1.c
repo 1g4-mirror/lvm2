@@ -100,6 +100,16 @@ static int _is_converting(struct logical_volume *lv)
 
 	if (lv_is_mirrored(lv)) {
 		seg = first_seg(lv);
+
+		/*
+		 * The mirrored segment need not be the first one, and a
+		 * segment without areas cannot hold the sync layer image.
+		 * Check before touching the slot: area 0 of an area-less
+		 * segment is past the end of its areas array.
+		 */
+		if (!seg->area_count)
+			return 0;
+
 		/* Can't use is_temporary_mirror() because the metadata for
 		 * seg_lv may not be read in and flags may not be set yet. */
 		if (seg_type(seg, 0) == AREA_LV &&
