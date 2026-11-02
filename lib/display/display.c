@@ -556,7 +556,8 @@ int lvdisplay_full(struct cmd_context *cmd,
 	} else if (lv_is_integrity(lv)) {
 		seg = first_seg(lv);
 		log_print("LV Integrity origin    %s", seg_lv(seg, 0)->name);
-		log_print("LV Integrity metadata  %s", seg->integrity_meta_dev->name);
+		if (seg->integrity_meta_dev)
+			log_print("LV Integrity metadata  %s", seg->integrity_meta_dev->name);
 		log_print("LV Integrity mode      %s",
 			  (seg->integrity_settings.mode[0] == 'B') ? "bitmap" :
 			  (seg->integrity_settings.mode[0] == 'J') ? "journal" : "");
