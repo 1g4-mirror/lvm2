@@ -958,6 +958,7 @@ static int _build_pv_idx(struct formatter *f, struct volume_group *vg)
 	union radix_value count = { 0 };
 	struct pv_list *pvl;
 	struct physical_volume *pv;
+	char pv_name[16];
 
 	if (!(f->pv_idx = radix_tree_create(NULL, NULL)))
 		return_0;
@@ -965,7 +966,22 @@ static int _build_pv_idx(struct formatter *f, struct volume_group *vg)
 	dm_list_iterate_items(pvl, &vg->pvs) {
 		pv = pvl->pv;
 
-		/* FIXME But skip if there's already an LV called pv%d ! */
+		/*
+		 * Segment areas share one name space for PVs and LVs and
+		 * import resolves a PV name first, so skip any pv%d that
+		 * is already an LV name.  Only metadata written by hand
+		 * or by another tool can produce such a name today, and
+		 * find_lv() is a radix tree lookup, so the cost is
+		 * negligible.
+		 */
+		for (;; count.n++) {
+			if (dm_snprintf(pv_name, sizeof(pv_name), "pv%d",
+					(int) count.n) < 0)
+				return_0;
+			if (!find_lv(vg, pv_name))
+				break;
+		}
+
 		if (!radix_tree_insert(f->pv_idx, &pv, sizeof(pv), count))
 			return_0;
 		count.n++;
