@@ -2225,7 +2225,9 @@ static int _create_vg_text_instance(struct format_instance *fid,
 		if (!(mda = dm_pool_zalloc(fid->mem, sizeof(*mda))))
 			return_0;
 		mda->ops = &_metadata_text_file_backup_ops;
-		mda->metadata_locn = _create_text_context(fid->mem, fic->context.private);
+		if (!(mda->metadata_locn =
+		      _create_text_context(fid->mem, fic->context.private)))
+			return_0;
 		mda->status = 0;
 		fid->metadata_areas_index = NULL;
 		fid_add_mda(fid, mda, NULL, 0, 0);
