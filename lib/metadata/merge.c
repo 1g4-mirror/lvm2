@@ -549,6 +549,9 @@ static void _check_lv_segment(struct logical_volume *lv, struct lv_segment *seg,
 
 			if (!lv_is_merging_origin(seg->merge_lv))
 				seg_error("merge LV is not flagged as merging");
+
+			if (lv_is_origin(seg->merge_lv))
+				seg_error("merge LV is an old snapshot origin");
 		}
 	} else { /* !thin */
 		if (seg->device_id)
