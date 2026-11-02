@@ -1051,6 +1051,11 @@ static int _lv_split_segment(struct logical_volume *lv, struct lv_segment *seg,
 
 /*
  * Ensure there's a segment boundary at the given logical extent
+ *
+ * Callers split many segments in a row, so the whole VG is not validated
+ * here: vg_write() validates the result before it gets stored.  Define
+ * DEBUG_LV_SPLIT to keep the per-split check while working on the
+ * splitting code.
  */
 int lv_split_segment(struct logical_volume *lv, uint32_t le)
 {
@@ -1069,8 +1074,10 @@ int lv_split_segment(struct logical_volume *lv, uint32_t le)
 	if (!_lv_split_segment(lv, seg, le))
 		return_0;
 
+#ifdef DEBUG_LV_SPLIT
 	if (!vg_validate(lv->vg))
 		return_0;
+#endif
 
 	return 1;
 }
