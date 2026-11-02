@@ -60,6 +60,12 @@ static int _thin_pool_add_message(struct lv_segment *seg,
 	uint32_t delete_id = 0;
 	dm_thin_message_t type;
 
+	if (!sn) {
+		log_error("Empty message section %s for logical volume %s.",
+			  key, seg->lv->name);
+		return 0;
+	}
+
 	/* Message must have only one from: create, delete */
 	if (dm_config_get_str(sn, "create", &lv_name)) {
 		if (!(lv = find_lv(seg->lv->vg, lv_name)))
