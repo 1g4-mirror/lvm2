@@ -2061,6 +2061,15 @@ static int _raid_reshape_add_images(struct logical_volume *lv,
 	log_debug_metadata("Adding %u data and metadata image LV pair%s to %s.",
 			   new_image_count - old_image_count, new_image_count - old_image_count > 1 ? "s" : "",
 			   display_lvname(lv));
+	/*
+	 * Archive the metadata of the previous state before marking the LV
+	 * for the reshape.  archive() only archives once per command, so the
+	 * call in the images adding code is a no-op after this.
+	 */
+	if (!archive(lv->vg))
+		return_0;
+	/* Define image adding reshape (used as SEGTYPE_FLAG to avoid incompatible activations on old runtime) */
+	lv->status |= LV_RESHAPE;
 	if (!_lv_raid_change_image_count(lv, 1, new_image_count, allocate_pvs, NULL, 0, 0))
 		return_0;
 
@@ -2105,9 +2114,6 @@ static int _raid_reshape_add_images(struct logical_volume *lv,
 	}
 
 	seg->stripe_size = new_stripe_size;
-
-	/* Define image adding reshape (used as SEGTYPE_FLAG to avoid incompatible activations on old runtime) */
-	lv->status |= LV_RESHAPE;
 
 	return 1;
 }
@@ -2659,7 +2665,18 @@ static int _raid_reshape(struct logical_volume *lv,
 					      new_data_copies, new_stripe_size, allocate_pvs))
 		return_0;
 
-	/* HM FIXME: workaround for not resetting "nosync" flag */
+	/*
+	 * A reshape re-lays-out all of the array data, so the areas an LV
+	 * created with --nosync left undefined are written; the skipped
+	 * initial sync is no longer pending.
+	 */
+	lv->status &= ~LV_NOTSYNCED;
+
+	/*
+	 * Allocating the reshape space went through lv_extend(), which also
+	 * set the global skip-resync flag, so reset it before the reshaped
+	 * segments are reloaded.
+	 */
 	init_mirror_in_sync(0);
 
 	/*
@@ -2842,7 +2859,13 @@ static int _raid_add_images_without_commit(struct logical_volume *lv,
 	struct segment_type *segtype;
 	const char *lv_name, *lv_name_tmp;
 
-	if (lv_is_not_synced(lv)) {
+	/*
+	 * A reshape rebuilds the array, so a RaidLV created with --nosync,
+	 * whose unwritten areas are undefined by contract, can be grown.
+	 * Adding an image that is rebuilt inline from an existing one stays
+	 * refused: it could end up a hybrid of the existing images.
+	 */
+	if (!(lv->status & LV_RESHAPE) && lv_is_not_synced(lv)) {
 		log_error("Can't add image to out-of-sync RAID LV:"
 			  " use 'lvchange --resync' first.");
 		return 0;
