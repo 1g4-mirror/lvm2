@@ -2662,7 +2662,16 @@ static int _raid_reshape(struct logical_volume *lv,
 	/* HM FIXME: workaround for not resetting "nosync" flag */
 	init_mirror_in_sync(0);
 
+	/*
+	 * A stripe adding reshape grows the LV, so the region size taken
+	 * before it may be below the minimum keeping the MD bitmap within
+	 * 2^21 regions for the grown size.  Allocating the reshape space
+	 * already raised it via lv_extend() and that state got committed
+	 * and loaded into the kernel, so restoring the old value alone
+	 * makes dm-raid reject the final reshape table.
+	 */
 	seg->region_size = new_region_size;
+	_check_and_adjust_region_size(lv);
 
 	if (seg->area_count != 2 || old_image_count != seg->area_count) {
 		if (!_lv_update_reload_fns_reset_eliminate_lvs(lv, 0, &removal_lvs, NULL))
