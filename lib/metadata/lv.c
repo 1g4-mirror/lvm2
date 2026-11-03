@@ -853,9 +853,15 @@ struct logical_volume *lv_data_lv(const struct logical_volume *lv)
 				  lv_is_thin_pool(lv) ||
 				  lv_is_vdo_pool(lv)) ?
 				  first_seg(lv) : NULL;
-	struct logical_volume *data_lv = seg ? seg_lv(seg, 0) : NULL;
 
-	return data_lv;
+	/*
+	 * A pool flag is read from metadata and can be set before the
+	 * segment becomes a pool, so trust it only when the segment has
+	 * an area and that area really is an LV.  A segment with no
+	 * areas would only make seg_type() report an internal error.
+	 */
+	return (seg && seg->area_count &&
+		(seg_type(seg, 0) == AREA_LV)) ? seg_lv(seg, 0) : NULL;
 }
 
 static char *_do_lv_data_lv_dup(struct dm_pool *mem, const struct logical_volume *lv,

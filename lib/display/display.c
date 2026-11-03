@@ -568,8 +568,10 @@ int lvdisplay_full(struct cmd_context *cmd,
 	} else if (lv_raid_has_integrity(lv)) {
 		log_print("LV Integrity           on");
 	} else if (lv_is_vdo_pool(lv)) {
-		seg = first_seg(lv);
-		log_print("LV VDO Pool data       %s", seg_lv(seg, 0)->name);
+		const struct logical_volume *data_lv = lv_data_lv(lv);
+
+		if (data_lv)
+			log_print("LV VDO Pool data       %s", data_lv->name);
 		if (lv_vdo_pool_status(lv, 0, &vdo_status)) { /* FIXME: flush option? */
 			log_print("LV VDO Pool usage      %s%%",
 				  display_percent(cmd, vdo_status->usage));
