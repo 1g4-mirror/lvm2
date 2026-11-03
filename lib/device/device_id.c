@@ -3129,6 +3129,17 @@ int device_id_system_list(struct cmd_context *cmd, struct device *dev, uint16_t 
 }
 
 /*
+ * Forget a dev that was matched to a du only by name: clear the filter
+ * state and drop it from lvmcache and from the duplicate lists.
+ */
+static void _drop_dev_from_lvmcache(struct cmd_context *cmd, struct device *dev)
+{
+	cmd->filter->wipe(cmd, cmd->filter, dev, NULL);
+	lvmcache_del_dev(dev);
+	lvmcache_del_dev_from_duplicates(dev);
+}
+
+/*
  * This is called after devices are scanned to compare what was found on disks
  * vs what's in the devices file.  The devices file could be outdated and need
  * correcting; the authoritative data is what's on disk.  Now that we have read
@@ -3505,9 +3516,7 @@ void device_ids_validate(struct cmd_context *cmd, struct dm_list *scanned_devs, 
 	dm_list_iterate_items(devl, &wrong_devs) {
 		if (!get_du_for_dev(cmd, devl->dev)) {
 			log_debug("Drop incorrectly matched %s", dev_name(devl->dev));
-			cmd->filter->wipe(cmd, cmd->filter, devl->dev, NULL);
-			lvmcache_del_dev(devl->dev);
-			lvmcache_del_dev_from_duplicates(devl->dev);
+			_drop_dev_from_lvmcache(cmd, devl->dev);
 		}
 	}
 
@@ -3876,9 +3885,7 @@ void device_ids_check_serial(struct cmd_context *cmd, struct dm_list *scan_devs,
 	dm_list_iterate_items(dil, &prev_devs) {
 		if (!get_du_for_dev(cmd, dil->dev)) {
 			log_debug("Drop incorrectly matched serial %s", dev_name(dil->dev));
-			cmd->filter->wipe(cmd, cmd->filter, dil->dev, NULL);
-       			lvmcache_del_dev(dil->dev);
-			lvmcache_del_dev_from_duplicates(dil->dev);
+			_drop_dev_from_lvmcache(cmd, dil->dev);
 		}
 	}
 
