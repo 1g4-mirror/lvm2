@@ -301,7 +301,9 @@ echo "@PREFIX=$PREFIX"
 echo "## DATE: $(date || true)"
 
 # Hostname IP address
-HOSTNAME=$(hostname -I 2>/dev/null || true)
+# Old hostname tool prints its usage text to stdout for -I,
+# so keep only output made of IP address characters.
+HOSTNAME=$(hostname -I 2>/dev/null | tr -d '\n' | grep -E '^[0-9a-fA-F.: ]*$' || true)
 HOSTNAME="$(hostname 2>/dev/null) ${HOSTNAME}" || true
 echo "## HOST: $HOSTNAME"
 
