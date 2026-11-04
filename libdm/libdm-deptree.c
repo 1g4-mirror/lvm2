@@ -3362,8 +3362,9 @@ static int _dm_tree_revert_activated(struct dm_tree_node *dnode)
 			}
 
 			log_debug_activation("Reverting %s.", _node_name(child));
+			/* Retry on EBUSY: a transient open must not stop the revert. */
 			if (!_deactivate_node(child->name, child->info.major, child->info.minor,
-					      &child->dtree->cookie, child->udev_flags, 0)) {
+					      &child->dtree->cookie, child->udev_flags, 1)) {
 				log_debug_activation("Unable to deactivate %s.", _node_name(child));
 				return 0;
 			}
