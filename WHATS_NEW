@@ -1,5 +1,13 @@
 Version 2.03.45 - 
 ==================
+  Add configure --with-default-io-engine=ENGINE setting.
+  Refuse to extend an active --nosync RAID LV that is not in sync.
+  Honor the requested allocation PV list when adding integrity to a RAID LV.
+  Fix partial RAID metadata detection when removing an integrity image.
+  Allow extending an inactive RAID LV created with --nosync.
+  Allow growing a RAID LV created with --nosync with lvconvert --stripes.
+  Fix lvconvert --stripes leaving a grown RAID LV with the old mapping.
+  Refuse adding integrity to a RAID LV whose stripe removal is unfinished.
   Fix vgcfgbackup segfault for a VG name ending in .tmp.
   Fix pvscan --allpvs crash when a PV has no device.
   Fix a stack overflow checking config definition paths with long names.
