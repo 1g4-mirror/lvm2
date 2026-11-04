@@ -51,7 +51,7 @@ git commit -a -m "configure: autoreconf" || :
 git add man/*_pregen || :
 git commit -a -m "make: generate" || :
 
-if git diff $HASH..HEAD &>/dev/null; then
+if ! git diff --quiet $HASH..HEAD; then
 	answ=1
 	echo "ERROR: May need to run autoreconf or make generate" >&2
 	git diff $HASH..HEAD > $DEST/autoreconf_make_generate.out
