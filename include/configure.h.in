@@ -58,6 +58,9 @@
 /* Default for lvm.conf event_activation. */
 #undef DEFAULT_EVENT_ACTIVATION
 
+/* Default for lvm.conf global/io_engine. */
+#undef DEFAULT_IO_ENGINE
+
 /* Name of default locking directory. */
 #undef DEFAULT_LOCK_DIR
 

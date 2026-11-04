@@ -178,6 +178,8 @@ else
 DEFAULT_LIBLINE=readline
 endif
 
+DEFAULT_IO_ENGINE = @DEFAULT_IO_ENGINE@
+
 # --locktype value with the lvmlockd backends enabled by configure bolded,
 # in display order, e.g. \fBsanlock\fP|\:\fBdlm\fP|\:\fBnone\fP.  foreach
 # joins items with a space, so the space after each |\: is substituted away.
@@ -203,6 +205,7 @@ $(SED) -e "s+#VERSION#+$(LVM_VERSION)+" \
 	-e "s+#SYSTEMD_GENERATOR_DIR#+$(SYSTEMD_GENERATOR_DIR)+" \
 	-e "s+#DEFAULT_LIBLINE#+$(DEFAULT_LIBLINE)+" \
 	-e "s+#DEFAULT_DMEVENTD_EXIT_ON_PATH#+$(DEFAULT_DMEVENTD_EXIT_ON_PATH)+" \
+	-e "s+#DEFAULT_IO_ENGINE#+$(DEFAULT_IO_ENGINE)+" \
 	-e "s+#DEFAULT_MANGLING#+$(DEFAULT_MANGLING)+" $< > $@
 endef
 

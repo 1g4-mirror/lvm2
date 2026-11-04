@@ -2003,6 +2003,25 @@ AC_ARG_VAR([URING_CFLAGS], [C compiler flags for liburing])
 AC_ARG_VAR([URING_LIBS], [linker flags for liburing])
 AC_SUBST(BUILD_LIBURING)
 
+################################################################################
+# default io engine
+AC_MSG_CHECKING([default io engine])
+AC_ARG_WITH(default-io-engine,
+	    AS_HELP_STRING([--with-default-io-engine=ENGINE],
+			   [default global/io_engine setting: auto/sync/libaio/threads/iouring [auto]]),
+			   DEFAULT_IO_ENGINE=$withval, DEFAULT_IO_ENGINE="auto")
+AS_CASE(["$DEFAULT_IO_ENGINE"],
+	[auto|sync|libaio|threads|iouring], [],
+	[AC_MSG_ERROR([--with-default-io-engine parameter invalid])])
+AS_IF([test "$DEFAULT_IO_ENGINE" = "libaio" && test "$BUILD_LIBAIO" = "no"],
+      [AC_MSG_ERROR([--with-default-io-engine=libaio needs libaio support, do not use --without-libaio])])
+AS_IF([test "$DEFAULT_IO_ENGINE" = "iouring" && test "$BUILD_LIBURING" = "no"],
+      [AC_MSG_ERROR([--with-default-io-engine=iouring needs liburing support, do not use --without-liburing])])
+AC_MSG_RESULT([$DEFAULT_IO_ENGINE])
+AC_DEFINE_UNQUOTED([DEFAULT_IO_ENGINE], ["$DEFAULT_IO_ENGINE"],
+		   [Default for lvm.conf global/io_engine.])
+AC_SUBST(DEFAULT_IO_ENGINE)
+
 AC_ARG_VAR([READLINE_CFLAGS], [C compiler flags for readline])
 AC_ARG_VAR([READLINE_LIBS], [linker flags for readline])
 
