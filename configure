@@ -747,6 +747,7 @@ BLKID_PC
 BLKDEACTIVATE
 READLINE_LIBS
 READLINE_CFLAGS
+DEFAULT_IO_ENGINE
 BUILD_LIBURING
 URING_LIBS
 URING_CFLAGS
@@ -1013,6 +1014,7 @@ with_default_backup_subdir
 with_default_cache_subdir
 with_default_locking_dir
 with_interface
+with_default_io_engine
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1844,6 +1846,9 @@ Optional Packages:
   --with-default-locking-dir=DIR
                           default locking directory [autodetect_lock_dir/lvm]
   --with-interface=IFACE  choose kernel interface (ioctl) [ioctl]
+  --with-default-io-engine=ENGINE
+                          default global/io_engine setting:
+                          auto/sync/libaio/threads/iouring [auto]
 
 Some influential environment variables:
   CC          C compiler command
@@ -16939,6 +16944,41 @@ else case e in #(
 esac
 fi
 
+
+
+
+################################################################################
+# default io engine
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: checking default io engine" >&5
+printf %s "checking default io engine... " >&6; }
+
+# Check whether --with-default-io-engine was given.
+if test ${with_default_io_engine+y}
+then :
+  withval=$with_default_io_engine; DEFAULT_IO_ENGINE=$withval
+else case e in #(
+  e) DEFAULT_IO_ENGINE="auto" ;;
+esac
+fi
+
+case "$DEFAULT_IO_ENGINE" in #(
+  auto|sync|libaio|threads|iouring) :
+     ;; #(
+  *) :
+    as_fn_error $? "--with-default-io-engine parameter invalid" "$LINENO" 5 ;;
+esac
+if test "$DEFAULT_IO_ENGINE" = "libaio" && test "$BUILD_LIBAIO" = "no"
+then :
+  as_fn_error $? "--with-default-io-engine=libaio needs libaio support, do not use --without-libaio" "$LINENO" 5
+fi
+if test "$DEFAULT_IO_ENGINE" = "iouring" && test "$BUILD_LIBURING" = "no"
+then :
+  as_fn_error $? "--with-default-io-engine=iouring needs liburing support, do not use --without-liburing" "$LINENO" 5
+fi
+{ printf '%s\n' "$as_me:${as_lineno-$LINENO}: result: $DEFAULT_IO_ENGINE" >&5
+printf '%s\n' "$DEFAULT_IO_ENGINE" >&6; }
+
+printf '%s\n' "#define DEFAULT_IO_ENGINE \"$DEFAULT_IO_ENGINE\"" >>confdefs.h
 
 
 

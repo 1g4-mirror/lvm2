@@ -1217,7 +1217,7 @@ global {
 	# threads - Use async I/O via pthreads.
 	# iouring - Use async I/O via liburing.
 	# This configuration option has an automatic default value.
-	# io_engine = "auto"
+	# io_engine = "@DEFAULT_IO_ENGINE@"
 
 	# Configuration option global/use_lvmlockd.
 	# Use lvmlockd for locking among hosts using LVM on shared storage.
