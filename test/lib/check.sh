@@ -486,6 +486,26 @@ raid_leg_status() {
 	die "$1-$2 status ${st[5]} != $3  (${st[*]})"
 }
 
+# check raid_action $vg $lv resync [recover ...]
+# Succeed if the raid target of $vg/$lv currently reports one of the given
+# sync actions (idle, resync, recover, reshape).  The action is used rather
+# than the health string because the number of health characters depends on
+# the target type and on the kernel.
+raid_action() {
+	local st
+	local action
+
+	st=( $(dmsetup status --noflush "$1-$2") ) ||
+		die "Unable to get status of $1/$2"
+
+	for action in "${@:3}"; do
+		[ "${st[7]}" = "$action" ] && return 0
+	done
+
+	echo "$1-$2 action ${st[7]} is none of \"${*:3}\"  (${st[*]})"
+	return 1
+}
+
 # Trace the command and check how many reads it submitted.
 # SPEC is the "SYSCALL OPTIONS" line printed by aux io_trace,
 # which names the syscall to count and the options that trace it;

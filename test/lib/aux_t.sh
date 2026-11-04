@@ -1993,6 +1993,24 @@ wait_for_sync() {
 	return 1
 }
 
+#
+# wait_raid_state <VG> <LV> <state>...
+# Wait until the raid target of <VG>/<LV> reports one of the given sync
+# states: idle, resync, recover or reshape.  This is how a test waits for
+# an operation it has just started to be really running before it checks
+# how the next command interacts with it:
+#   aux wait_raid_state $vg $lv1 resync recover
+wait_raid_state() {
+	local i
+
+	for i in {1..100}; do
+		check raid_action "$@" && return 0
+		sleep .1
+	done
+
+	die "RAID $1/$2 did not reach a state of \"${*:3}\""
+}
+
 wait_recalc() {
 	local sync
 	local checklv=$1

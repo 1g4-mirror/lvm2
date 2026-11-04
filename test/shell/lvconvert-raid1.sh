@@ -103,6 +103,11 @@ delay_pv_pe_area "$dev2"
 lvcreate --type raid1 -m 2 -aey -l 2 -n $lv1 $vg "$dev1" "$dev2" "$dev3"
 lvconvert --yes -m 1 $vg/$lv1 "$dev3"
 
+# Wait for the resync to be running: right after the table reload above the
+# target can still report the previous, fully in-sync status, and the
+# removal below would then be allowed instead of refused.
+aux wait_raid_state $vg $lv1 resync recover
+
 # Cannot remove origin 1st. leg while synchronizing
 not lvconvert --yes -m 0 $vg/$lv1 "$dev1"
 
