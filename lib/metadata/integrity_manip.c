@@ -709,6 +709,24 @@ int lv_add_integrity_to_raid(struct logical_volume *lv, struct dm_integrity_sett
 	}
 
 	/*
+	 * Removing stripes is a two step conversion: the first lvconvert
+	 * run reshapes the image data and reports that the freed images
+	 * have to be removed by a second run of it.  The images stay part
+	 * of the raid set until that second run, but once the reshape has
+	 * finished the superblocks describe the smaller array, so reloading
+	 * the LV with the extra images in the table fails in the raid
+	 * target.  Refuse while that image removal is still pending.
+	 */
+	for (s = 0; s < area_count; s++) {
+		if (seg_lv(seg_top, s)->status & LV_REMOVE_AFTER_RESHAPE) {
+			log_error("Cannot add integrity to %s while raid images wait to be removed "
+				  "after a reshape; repeat the \"lvconvert --stripes\" conversion "
+				  "to finish it first.", display_lvname(lv));
+			return 0;
+		}
+	}
+
+	/*
 	 * For each rimage, create an _imeta LV for integrity metadata.
 	 * Each needs to be zeroed.
 	 */
