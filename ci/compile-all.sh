@@ -44,7 +44,10 @@ answ=0
 ################################################################################
 # Test autoreconf OR make generate needs to run:
 ################################################################################
-autoreconf
+# AC_PROG_GCC_TRADITIONAL keeps the pre-ANSI compiler fallback in the
+# generated configure, but autoconf 2.70+ reports it as obsolete.  The
+# warning is not actionable, so drop that category from the log.
+autoreconf -W no-obsolete
 git commit -a -m "configure: autoreconf" || :
 
 ./configure $CONFIGURE && make generate
