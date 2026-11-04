@@ -1210,7 +1210,7 @@ cfg(global_use_aio_CFG, "use_aio", global_CFG_SECTION, CFG_DEFAULT_COMMENTED, CF
 	"When io_engine is not set, use_aio=0 selects sync I/O.\n",
 	"Use async I/O when reading and writing devices.\n")
 
-cfg(global_io_engine_CFG, "io_engine", global_CFG_SECTION, CFG_DEFAULT_COMMENTED, CFG_TYPE_STRING, DEFAULT_IO_ENGINE, vsn(2, 3, 44), NULL, 0, NULL,
+cfg(global_io_engine_CFG, "io_engine", global_CFG_SECTION, CFG_DEFAULT_COMMENTED, CFG_TYPE_STRING, DEFAULT_IO_ENGINE, vsn(2, 3, 44), "@DEFAULT_IO_ENGINE@", 0, NULL,
 	"Select I/O engine for device reads and writes.\n"
 	"auto - LVM will automatically choose, may change over time.\n"
 	"sync - Use synchronous I/O. Same as deprecated use_aio=0.\n"
