@@ -1181,12 +1181,12 @@ See \fBlvmreport\fP(7) for more information.
 .
 .TP
 .O_resync
-Initiates mirror synchronization. Synchronization generally happens
-automatically, but this option forces it to run.
+Initiates synchronization of a mirror or RAID LV. Synchronization
+generally happens automatically, but this option forces it to run.
 Also see --rebuild to synchronize a specific PV.
-During synchronization, data is read from the primary mirror device
-and copied to the others. This can take considerable time, during
-which the LV is without a complete redundant copy of the data.
+During synchronization, data is read from an in-sync image and copied
+to the others. This can take considerable time, during which the LV
+is without a complete redundant copy of the data.
 See \fBlvmraid\fP(7) for more information.
 .
 .TP

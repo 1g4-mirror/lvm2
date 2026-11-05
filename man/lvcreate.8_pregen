@@ -1839,15 +1839,32 @@ incorrect results.
 .TP
 .O_nosync
 Causes the creation of mirror, raid1, raid4, raid5 and raid10 to skip the
-initial synchronization. In case of mirror, raid1 and raid10, any data
-written afterwards will be mirrored, but the original contents will not be
-copied. In case of raid4 and raid5, no parity blocks will be written,
-though any data written afterwards will cause parity blocks to be stored.
+initial synchronization. For mirror, raid1 and raid10, any data written
+afterwards will be mirrored, but the original contents will not be copied.
 This is useful for skipping a potentially long and resource intensive initial
-sync of an empty mirror/raid1/raid4/raid5 and raid10 LV.
-This option is not valid for raid6, because raid6 relies on proper parity
-(P and Q Syndromes) being created during initial synchronization in order
-to reconstruct proper user data in case of device failures.
+sync of an empty mirror, raid1 or raid10 LV.
+For raid4 and raid5, all data and parity blocks must already be consistent,
+for example by being fully zeroed. Otherwise, recovery after a device
+failure may produce incorrect data, including data written after creation.
+LVM warns about this even when --yes is used.
+If the LV is created inactive, its first activation may initialize parity
+despite --nosync.
+When extending a mirror, raid1, raid4, raid5 or raid10 LV, --nosync requests
+skipping synchronization of the new space and marks the entire LV as not
+synchronized.
+Later extensions also request --nosync until the flag is cleared. For raid4
+and raid5, the new data and parity areas must already be consistent; each
+extension that requests --nosync warns about this without a prompt, even
+with --yes.
+An active LV marked not synchronized cannot be extended while it is still
+recovering.
+Removing the new space does not restore the synchronized status; a later
+lvchange --resync synchronizes the entire LV. For mirror, raid1 and raid10,
+confirmation is required when first marking the LV, unless --yes is used.
+For raid6 creation, --nosync is not valid, because raid6 relies on proper
+parity (P and Q syndromes) being created during initial synchronization to
+reconstruct user data in case of device failures. When extending a raid6
+LV, --nosync is ignored and the new space is synchronized.
 raid0 and raid0_meta do not provide any data copies or parity support
 and thus do not support initial synchronization.
 .
