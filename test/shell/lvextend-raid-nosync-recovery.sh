@@ -17,9 +17,11 @@ aux prepare_devs 4 34
 get_devs
 
 # Sparse partial-stripe writes must be recoverable from consistent parity.
-dd if=/dev/zero of=data bs=1M count=12 oflag=direct
+# The test directory may be on tmpfs, which lacked direct I/O support
+# before Linux 6.6, so keep this regular file buffered.
+dd if=/dev/zero of=data bs=1M count=12
 for block in 0 1 4 64 191; do
-	dd if=/dev/urandom of=data bs=64K count=1 seek="$block" oflag=direct conv=notrunc
+	dd if=/dev/urandom of=data bs=64K count=1 seek="$block" conv=notrunc
 done
 segtypes="raid5"
 aux have_raid4 && segtypes="raid4 $segtypes"
