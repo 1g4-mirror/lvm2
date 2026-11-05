@@ -50,28 +50,32 @@ check lv_field $vg/${lv2}_vdata size "4.00g"
 check lv_field $vg/${lv1} data_percent "0.00"
 lvremove -ff $vg
 
-# Slab size must be a power of two: non-power-of-two values are rounded up
-lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
-	--vdosettings 'vdo_slab_size_mb=300' >out 2>&1
-grep -E "Rounding VDO slab size up from 300.*M.?B to 512.*M.?B" out
-
-# Upper bound: 20000 rounds up to the 32GiB maximum
-lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
-	--vdosettings 'vdo_slab_size_mb=20000' >out 2>&1
-grep -E "Rounding VDO slab size up from .* to 32.*G.?B" out
-
-# Powers of two (including the maximum) are left alone
-for s in 256 32768 ; do
+# Slab size must be a power of two: non-power-of-two values are rounded up.
+# lvcreate --test is not supported on shared VGs with lockd, so these cases
+# only run when lvmlockd is not in use.
+if [[ "${LVM_TEST_LVMLOCKD:-0}" = 0 ]]; then
 	lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
-		--vdosettings "vdo_slab_size_mb=$s" >out 2>&1
-	not grep "Rounding VDO slab size" out
-done
+		--vdosettings 'vdo_slab_size_mb=300' >out 2>&1
+	grep -E "Rounding VDO slab size up from 300.*M.?B to 512.*M.?B" out
 
-# Above the maximum is rejected, not rounded
-not lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
-	--vdosettings 'vdo_slab_size_mb=33000' >out 2>&1
-grep "out of range" out
-not grep "Rounding VDO slab size" out
+	# Upper bound: 20000 rounds up to the 32GiB maximum
+	lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
+		--vdosettings 'vdo_slab_size_mb=20000' >out 2>&1
+	grep -E "Rounding VDO slab size up from .* to 32.*G.?B" out
+
+	# Powers of two (including the maximum) are left alone
+	for s in 256 32768 ; do
+		lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
+			--vdosettings "vdo_slab_size_mb=$s" >out 2>&1
+		not grep "Rounding VDO slab size" out
+	done
+
+	# Above the maximum is rejected, not rounded
+	not lvcreate --test --vdo -L4G -V8G -n $lv1 $vg/$lv2 \
+		--vdosettings 'vdo_slab_size_mb=33000' >out 2>&1
+	grep "out of range" out
+	not grep "Rounding VDO slab size" out
+fi
 
 # Real creation uses the rounded size
 lvcreate --vdo -L4G -V8G -n $lv1 $vg/$lv2 \

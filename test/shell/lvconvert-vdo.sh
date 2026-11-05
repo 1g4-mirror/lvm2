@@ -85,6 +85,24 @@ grep -E "Rounding VDO slab size up from 300.*M.?B to 512.*M.?B" out
 check lv_field $vg/$lv1 vdo_slab_size "512.00m"
 lvremove -f $vg
 
+# Check --vdosettings minimum_io_size is also applied to converted vdo-pool
+lvcreate -L5G -n $lv1 $vg
+lvconvert -y --type vdo-pool --vdosettings 'minimum_io_size=512' $vg/$lv1
+check lv_field $vg/$lv1 vdo_minimum_io_size "512b"
+lvremove -f $vg
+
+lvcreate -L5G -n $lv1 $vg
+lvconvert -y --type vdo-pool --vdosettings 'minimum_io_size=4096' $vg/$lv1
+check lv_field $vg/$lv1 vdo_minimum_io_size "4.00k"
+lvremove -f $vg
+
+# only 512 or 4096 are valid values (and eventually 1 or 8 sectors)
+lvcreate -L5G -n $lv1 $vg
+not lvconvert -y --type vdo-pool --vdosettings 'minimum_io_size=8000' $vg/$lv1 2>out
+grep "VDO minimum io size .* is unsupported" out
+check lv_field $vg/$lv1 segtype linear
+lvremove -f $vg
+
 #
 lvcreate -L5G -n $lv1 $vg
 lvconvert -y --vdopool $vg/$lv1
