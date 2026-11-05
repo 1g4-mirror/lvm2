@@ -697,6 +697,9 @@ static int _read_mirror_and_raid_params(struct cmd_context *cmd,
 	if ((lp->nosync = arg_is_set(cmd, nosync_ARG)) && seg_is_any_raid6(lp)) {
 		log_error("nosync option prohibited on RAID6.");
 		return 0;
+	} else if (lp->nosync && (seg_is_raid4(lp) || seg_is_any_raid5(lp))) {
+		log_warn("WARNING: Data and parity must already be consistent (e.g. fully zeroed) with --nosync.");
+		log_warn("WARNING: Inconsistent parity may cause data loss during recovery after a device failure.");
 	}
 
 	if (!(lp->region_size = arg_uint_value(cmd, regionsize_ARG, 0)) &&

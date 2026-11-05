@@ -367,6 +367,20 @@ Automatic synchronization happens when a RAID LV is activated, but it is
 usually partial because the bitmaps reduce the areas that are checked.
 A full sync becomes necessary when devices in the RAID LV are replaced.
 .P
+The initialization of a new RAID4 or RAID5 LV can be skipped with
+\fB--nosync\fP, but all data and parity blocks must already be
+consistent, for example by being fully zeroed.  LVM does not verify
+this, and inconsistent parity can cause data loss during recovery after
+a device failure.  A RAID4/5 LV created inactive may still initialize
+parity on its first activation.  Extending a mirrored or RAID4/5 LV
+with \fB--nosync\fP leaves the new space unsynchronized and marks the
+LV as not synchronized; later extensions inherit the setting until
+\fBlvchange --resync\fP synchronizes the whole LV.
+.P
+A RAID6 LV never skips synchronization: creating one with
+\fB--nosync\fP is an error, and extending one ignores the option and
+synchronizes the new space.
+.P
 The synchronization status of a RAID LV is reported by the
 following command, where "Cpy%Sync" = "100%" means sync is complete:
 .P

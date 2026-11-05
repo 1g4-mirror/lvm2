@@ -5905,11 +5905,10 @@ static int _lvresize_adjust_extents(struct logical_volume *lv,
 
 	/*
 	 * Has the user specified that they would like the additional
-	 * extents of a mirror not to have an initial sync?
+	 * extents of a mirrored or parity RAID LV not to have an initial sync?
 	 */
-	if ((lp->extents > existing_logical_extents) &&
-	    seg_is_mirrored(first_seg(lv)) && lp->nosync) {
-		if (!lv_is_not_synced(lv)) {
+	if ((lp->extents > existing_logical_extents) && lp->nosync) {
+		if (seg_is_mirrored(first_seg(lv)) && !lv_is_not_synced(lv)) {
 			log_warn("WARNING: Extending %s with --nosync may leave new space unsynchronized.",
 				 display_lvname(lv));
 			log_warn("WARNING: The LV will be marked not synchronized, even if later reduced.");
@@ -5919,7 +5918,14 @@ static int _lvresize_adjust_extents(struct logical_volume *lv,
 				return 0;
 			}
 		}
-		lv->status |= LV_NOTSYNCED;
+		if (seg_is_any_raid6(first_seg(lv)))
+			log_print_unless_silent("Ignoring --nosync for %s: raid6 "
+						"always synchronizes the new space.",
+						display_lvname(lv));
+
+		if (seg_is_mirrored(first_seg(lv)) || seg_is_raid4(first_seg(lv)) ||
+		    seg_is_any_raid5(first_seg(lv)))
+			lv->status |= LV_NOTSYNCED;
 	}
 
 	log_debug("New size for %s: %" PRIu32 ". Existing logical extents: %" PRIu32 " / physical extents: %" PRIu32 ".",
@@ -6147,13 +6153,26 @@ static int _lv_resize_volume(struct logical_volume *lv,
 	if (lp->resize == LV_REDUCE) {
 		if (!lv_reduce(lv, lv->le_count - lp->extents))
 			return_0;
-	} else if ((lp->extents > lv->le_count) && /* Ensure we extend */
-		   !lv_extend(lv, lp->segtype,
-			      lp->stripes, lp->stripe_size,
-			      lp->mirrors, first_seg(lv)->region_size,
-			      lp->extents - lv->le_count,
-			      pvh, alloc, lp->approx_alloc))
-		return_0;
+	} else if (lp->extents > lv->le_count) {
+		/* Reshape allocation also calls lv_extend; only size extensions
+		 * should inherit the parity LV's nosync policy. */
+		if ((seg_is_raid4(first_seg(lv)) || seg_is_any_raid5(first_seg(lv))) &&
+		    lv_is_not_synced(lv)) {
+			if (!_lv_can_skip_sync(lv))
+				return_0;
+
+			log_warn("WARNING: New data and parity must already be consistent (e.g. fully zeroed).");
+			log_warn("WARNING: Inconsistent parity may cause data loss during recovery after a device failure.");
+			init_mirror_in_sync(1);
+		}
+
+		if (!lv_extend(lv, lp->segtype,
+			       lp->stripes, lp->stripe_size,
+			       lp->mirrors, first_seg(lv)->region_size,
+			       lp->extents - lv->le_count,
+			       pvh, alloc, lp->approx_alloc))
+			return_0;
+	}
 
 	if (old_extents == lv->le_count)
 		log_print_unless_silent("Size of logical volume %s unchanged from %s (%" PRIu32 " extents).",
