@@ -99,14 +99,18 @@ case "$(uname -r)" in
 echo "Skipping RAID1 down-conversion checks on kernel 4.8.14"
 ;;
 *)
-delay_pv_pe_area "$dev2"
+# Let the initial resync finish, take the array down to two legs and then
+# force a fresh resync.  Racing the initial resync is not reliable: it can
+# complete before the down-conversion returns, and the removal below would
+# then be allowed.  Delaying a leg keeps the forced resync running long
+# enough to be observed.
 lvcreate --type raid1 -m 2 -aey -l 2 -n $lv1 $vg "$dev1" "$dev2" "$dev3"
+aux wait_for_sync $vg $lv1
 lvconvert --yes -m 1 $vg/$lv1 "$dev3"
 
-# Wait for the resync to be running: right after the table reload above the
-# target can still report the previous, fully in-sync status, and the
-# removal below would then be allowed instead of refused.
-aux wait_raid_state $vg $lv1 resync recover
+delay_pv_pe_area "$dev2"
+lvchange -y --resync $vg/$lv1
+aux wait_raid_state $vg $lv1 resync
 
 # Cannot remove origin 1st. leg while synchronizing
 not lvconvert --yes -m 0 $vg/$lv1 "$dev1"
