@@ -69,15 +69,32 @@ lvremove --yes $vg/$lv1
 
 for r in $segtypes
 do
-	# raid4/5 support resynchronization
+	# raid4/5 still support both synchronization and --nosync.
 	lvcreate --type $r -Zn -i 3 -L10 -n $lv1 $vg
 	should check raid_leg_status $vg $lv1 "aaaa"
 	_sync "AAAA"
 
-	# raid4/5 support --nosync
-	lvcreate --type $r -Zn --nosync -i 3 -l 1 -n $lv2 $vg
-	_check_raid_in_loop $vg $lv2 "AAAA"
-	lvremove --yes $vg
+	# No prompt, even without --yes or input; warn about parity instead.
+	lvcreate --type $r -Zn --nosync -i 3 -l 3 -n $lv1 $vg < /dev/null > out 2>&1
+	grep 'Data and parity must already be consistent' out
+	grep 'fully zeroed' out
+	grep 'Inconsistent parity may cause data loss during recovery' out
+	not grep 'Continue.*\[y/n\]' out
+	check lv_attr_bit type $vg/$lv1 "R"
+	dmsetup table "$vg-$lv1" > table
+	grep -w nosync table
+	_check_raid_in_loop $vg $lv1 "AAAA"
+	lvremove --yes $vg/$lv1
+
+	# --yes does not suppress the warning for inactive creation.  Existing
+	# activation behavior initializes an LV created without activation.
+	lvcreate --yes -an --type $r -Zn --nosync -i 3 -l 3 -n $lv1 $vg > out 2>&1
+	grep 'Inconsistent parity may cause data loss during recovery' out
+	check lv_attr_bit type $vg/$lv1 "R"
+	lvchange -ay $vg/$lv1
+	dmsetup table "$vg-$lv1" > table
+	not grep -w nosync table
+	_sync "AAAA"
 done
 
 # raid6 supports resynchronization
@@ -87,6 +104,9 @@ _sync "AAAAA"
 
 # raid6 rejects --nosync; it has to initialize P- and Q-Syndromes
 not lvcreate --type raid6 --nosync -Zn -i 3 -l 1 -n $lv1 $vg
+not lvcreate --yes --type raid6 --nosync -Zn -i 3 -l 1 -n $lv1 $vg
+not lvcreate --yes -an --type raid6 --nosync -Zn -i 3 -l 1 -n $lv1 $vg
+not lvs $vg/$lv1
 
 # raid10 supports resynchronization
 lvcreate --type raid10 -m 1 -Zn -i 3 -L10 -n $lv1 $vg
