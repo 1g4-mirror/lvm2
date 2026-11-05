@@ -98,9 +98,14 @@ not grep 'Continue.*\[y/n\]' out
 check lv_field $vg/$lv1 lv_size "32.00m"
 check lv_attr_bit type $vg/$lv1 "R"
 check_nosync_table "$vg-$lv1" yes
-lvresize --yes --fs ignore -L 28M $vg/$lv1
-check lv_field $vg/$lv1 lv_size "28.00m"
-check lv_attr_bit type $vg/$lv1 "R"
+# Shrinking a RAID LV needs dm-raid 1.9.0.  Do not pass --fs ignore:
+# without libblkid only the fsadm-based fs handling exists, and the LV
+# has no filesystem to resize anyway.
+if aux have_raid 1 9 0; then
+	lvresize --yes -L 28M $vg/$lv1
+	check lv_field $vg/$lv1 lv_size "28.00m"
+	check lv_attr_bit type $vg/$lv1 "R"
+fi
 
 lvremove -ff $vg/$lv1
 
