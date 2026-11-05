@@ -4611,6 +4611,30 @@ static int _lv_raid_redundant_allocation(struct logical_volume *lv, struct dm_li
 }
 
 /*
+ * An active LV must be fully synchronized before an extension may request
+ * nosync on the new table; an inactive LV cannot be recovering.
+ */
+static int _lv_can_skip_sync(struct logical_volume *lv)
+{
+	dm_percent_t sync_percent = DM_PERCENT_INVALID;
+
+	if (lv_is_active(lv)) {
+		if (!lv_mirror_percent(lv->vg->cmd, lv, 0, &sync_percent, NULL)) {
+			log_error("Failed to get sync percent for %s.", display_lvname(lv));
+			return 0;
+		}
+
+		if (sync_percent != DM_PERCENT_100) {
+			log_error("LV %s cannot be extended while it is recovering.",
+				  display_lvname(lv));
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
+/*
  * Entry point for single-step LV allocation + extension.
  * Extents is the number of logical extents to append to the LV unless
  * approx_alloc is set when it is an upper limit for the total number of
@@ -4744,42 +4768,25 @@ int lv_extend(struct logical_volume *lv,
 		}
 
 		/*
-		 * If we are expanding an existing mirror, we can skip the
-		 * resync of the extension if the LV is currently in-sync
-		 * and the LV has the LV_NOTSYNCED flag set.
+		 * A mirrored LV created or extended with --nosync keeps the
+		 * LV_NOTSYNCED flag until it is cleared, e.g. by resync.  A
+		 * later extension keeps the flag.  For an active LV, require a
+		 * reported sync percent of 100% before requesting nosync on
+		 * the new table.
+		 *
+		 * The transient setting requests nosync for a table loaded in
+		 * this operation; it does not persist across later activation.
 		 */
 		if (old_extents &&
 		    segtype_is_mirrored(segtype) &&
-		    (lv_is_not_synced(lv))) {
-			dm_percent_t sync_percent = DM_PERCENT_INVALID;
-
-			/*
-			 * Only an active LV can be recovering, so only an
-			 * active one needs the sync percent read.  An inactive
-			 * LV cannot be recovering: extend it with the resync
-			 * skipped, as --nosync asked for.
-			 */
-			if (lv_is_active(lv)) {
-				if (!(r = lv_mirror_percent(lv->vg->cmd, lv, 0,
-							    &sync_percent, NULL))) {
-					log_error("Failed to get sync percent for %s.",
-						  display_lvname(lv));
-					goto out;
-				}
-
-				if (sync_percent != DM_PERCENT_100) {
-					log_error("LV %s cannot be extended while it "
-						  "is recovering.", display_lvname(lv));
-					r = 0;
-					goto out;
-				}
+		    lv_is_not_synced(lv)) {
+			if (!_lv_can_skip_sync(lv)) {
+				r = 0;
+				goto_out;
 			}
 
-			log_verbose("Skipping initial resync for "
-				    "extended portion of %s.",
-				    display_lvname(lv));
+			log_verbose("Preserving nosync policy for %s.", display_lvname(lv));
 			init_mirror_in_sync(1);
-			lv->status |= LV_NOTSYNCED;
 		}
 	}
 
@@ -5900,9 +5907,19 @@ static int _lvresize_adjust_extents(struct logical_volume *lv,
 	 * Has the user specified that they would like the additional
 	 * extents of a mirror not to have an initial sync?
 	 */
-	if ((lp->extents > existing_logical_extents)) {
-		if (seg_is_mirrored(first_seg(lv)) && lp->nosync)
-			lv->status |= LV_NOTSYNCED;
+	if ((lp->extents > existing_logical_extents) &&
+	    seg_is_mirrored(first_seg(lv)) && lp->nosync) {
+		if (!lv_is_not_synced(lv)) {
+			log_warn("WARNING: Extending %s with --nosync may leave new space unsynchronized.",
+				 display_lvname(lv));
+			log_warn("WARNING: The LV will be marked not synchronized, even if later reduced.");
+			log_warn("WARNING: lvchange --resync synchronizes the whole LV.");
+			if (!lp->yes && yes_no_prompt("Continue with --nosync? [y/n]: ") == 'n') {
+				log_error("Logical volume %s not extended.", display_lvname(lv));
+				return 0;
+			}
+		}
+		lv->status |= LV_NOTSYNCED;
 	}
 
 	log_debug("New size for %s: %" PRIu32 ". Existing logical extents: %" PRIu32 " / physical extents: %" PRIu32 ".",

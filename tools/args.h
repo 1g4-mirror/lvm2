@@ -774,12 +774,12 @@ arg(restoremissing_ARG, '\0', "restoremissing", 0, 0, 0,
     "e.g. due to a transient failure. The PV is not reinitialized.\n")
 
 arg(resync_ARG, '\0', "resync", 0, 0, 0,
-    "Initiates mirror synchronization. Synchronization generally happens\n"
-    "automatically, but this option forces it to run.\n"
+    "Initiates synchronization of a mirror or RAID LV. Synchronization\n"
+    "generally happens automatically, but this option forces it to run.\n"
     "Also see --rebuild to synchronize a specific PV.\n"
-    "During synchronization, data is read from the primary mirror device\n"
-    "and copied to the others. This can take considerable time, during\n"
-    "which the LV is without a complete redundant copy of the data.\n"
+    "During synchronization, data is read from an in-sync image and copied\n"
+    "to the others. This can take considerable time, during which the LV\n"
+    "is without a complete redundant copy of the data.\n"
     "See \\fBlvmraid\\fP(7) for more information.\n")
 
 arg(rootvg_ARG, '\0', "rootvg", 0, 0, 0,

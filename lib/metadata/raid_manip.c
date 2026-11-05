@@ -2761,9 +2761,9 @@ static int _raid_reshape(struct logical_volume *lv,
 	lv->status &= ~LV_NOTSYNCED;
 
 	/*
-	 * Allocating the reshape space went through lv_extend(), which also
-	 * set the global skip-resync flag, so reset it before the reshaped
-	 * segments are reloaded.
+	 * Allocating reshape space may call lv_extend(), which can set the
+	 * transient skip-resync flag.  Clearing LV_NOTSYNCED above does not
+	 * clear that flag, so reset it before loading the final reshape table.
 	 */
 	init_mirror_in_sync(0);
 
