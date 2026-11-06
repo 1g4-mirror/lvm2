@@ -1041,7 +1041,7 @@ int dm_task_set_read_ahead(struct dm_task *dmt, uint32_t read_ahead,
 
 int dm_task_suppress_identical_reload(struct dm_task *dmt)
 {
-	dmt->suppress_identical_reload = 1;
+	dmt->reload_policy = DM_RELOAD_COMPARE_SKIP_IDENTICAL;
 	return 1;
 }
 
@@ -1937,7 +1937,7 @@ static int _skip_raid_sync_flag(const char **pp)
  * When NOT suspended, skip only in p2 -- a rebuild in p1 is a
  * deliberate request that must trigger a reload.  When suspended,
  * skip in both p1 and p2 -- LVM is in the second preload pass
- * (the first already loaded the rebuild table via force_reload),
+ * (the first already loaded the rebuild table via a forced reload),
  * the active table is stale, and a redundant reload here would
  * hit "Internal error: table load while devices are suspended".
  */
@@ -2137,11 +2137,14 @@ static int _target_params_equiv(const char *type,
 	return 0;
 }
 
-static int _reload_with_suppression_v4(struct dm_task *dmt)
+static int _reload_with_comparison_v4(struct dm_task *dmt)
 {
 	struct dm_task *task;
 	struct target *t1, *t2;
 	size_t len;
+	int identical = 0;
+	int equiv;
+	int suspended;
 	int r;
 
 	/* New task to get existing table information */
@@ -2177,6 +2180,8 @@ static int _reload_with_suppression_v4(struct dm_task *dmt)
 		t2 = t2->next;
 	dmt->existing_table_size = t2 ? t2->start + t2->length : 0;
 
+	suspended = (task->dmi.v4->flags & DM_SUSPEND_FLAG) ? 1 : 0;
+
 	if (((task->dmi.v4->flags & DM_READONLY_FLAG) ? 1 : 0) != dmt->read_only)
 		goto no_match;
 
@@ -2203,42 +2208,36 @@ static int _reload_with_suppression_v4(struct dm_task *dmt)
 			goto no_match;
 		}
 		if (strcmp(t1->params, t2->params)) {
-			if (dmt->skip_reload_params_compare) {
-				log_debug("reload %d:%d diff params ignore for type %s.",
-					  task->major, task->minor, t1->type);
-				log_debug("reload params1 %s", t1->params);
-				log_debug("reload params2 %s", t2->params);
-			} else if (_target_params_equiv(t1->type, t1->params, t2->params,
-					       task->dmi.v4->flags & DM_SUSPEND_FLAG)) {
-				log_debug("reload %d:%d diff params equiv for type %s.",
-					  task->major, task->minor, t1->type);
-				log_debug("reload params1 %s", t1->params);
-				log_debug("reload params2 %s", t2->params);
-			} else {
-				log_debug("reload %d:%d diff params for type %s.",
-					  task->major, task->minor, t1->type);
-				log_debug("reload params1 %s", t1->params);
-				log_debug("reload params2 %s", t2->params);
+			equiv = _target_params_equiv(t1->type, t1->params,
+						     t2->params, suspended);
+			log_debug("reload %d:%d diff params%s for type %s.",
+				  task->major, task->minor,
+				  equiv ? " equiv" : "", t1->type);
+			log_debug("reload params1 %s", t1->params);
+			log_debug("reload params2 %s", t2->params);
+			if (!equiv)
 				goto no_match;
-			}
 		}
 
 		t1 = t1->next;
 		t2 = t2->next;
 	}
 
-	if (!t1 && !t2) {
+	if (!t1 && !t2)
+		identical = 1;
+
+no_match:
+	if (identical && dmt->reload_policy == DM_RELOAD_COMPARE_SKIP_IDENTICAL) {
 		dmt->dmi.v4 = task->dmi.v4;
 		task->dmi.v4 = NULL;
 		dm_task_destroy(task);
 		return 1;
 	}
 
-no_match:
 	dm_task_destroy(task);
 
 	/* Now do the original reload */
-	dmt->suppress_identical_reload = 0;
+	dmt->reload_policy = DM_RELOAD_NO_COMPARE;
 	r = dm_task_run(dmt);
 
 	return r;
@@ -2828,8 +2827,9 @@ DM_EXPORT_NEW_SYMBOL(int, dm_task_run, 1_02_197)
 	    !dev_uuid && dmt->major <= 0)
 		return _mknodes_v4(dmt);
 
-	if ((dmt->type == DM_DEVICE_RELOAD) && dmt->suppress_identical_reload)
-		return _reload_with_suppression_v4(dmt);
+	if ((dmt->type == DM_DEVICE_RELOAD) &&
+	    dmt->reload_policy != DM_RELOAD_NO_COMPARE)
+		return _reload_with_comparison_v4(dmt);
 
 	if ((dmt->type == DM_DEVICE_SUSPEND) && dmt->enable_checks)
 		return _suspend_with_validation_v4(dmt);

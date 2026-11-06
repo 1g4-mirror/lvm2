@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2001-2004 Sistina Software, Inc. All rights reserved.
- * Copyright (C) 2004-2006 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2004-2026 Red Hat, Inc. All rights reserved.
  *
  * This file is part of the device-mapper userspace tools.
  *
@@ -32,6 +32,12 @@ struct target {
 	struct target *next;
 };
 
+enum dm_reload_policy {
+	DM_RELOAD_NO_COMPARE,
+	DM_RELOAD_COMPARE_SKIP_IDENTICAL,
+	DM_RELOAD_COMPARE_ALWAYS_LOAD
+};
+
 struct dm_task {
 	int type;
 	char *dev_name;
@@ -60,8 +66,7 @@ struct dm_task {
 	int no_open_count;
 	int skip_lockfs;
 	int query_inactive_table;
-	int suppress_identical_reload;
-	int skip_reload_params_compare;
+	enum dm_reload_policy reload_policy;
 	dm_add_node_t add_node;
 	uint64_t existing_table_size;
 	int cookie_set;
