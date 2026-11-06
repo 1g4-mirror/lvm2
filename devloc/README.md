@@ -293,6 +293,16 @@ read-serving location matching the computed data candidate.
 DEVLOC=/root/devloc bash test-devloc-raid.sh /dev/sda /dev/sdb /dev/sdc /dev/sdd
 ```
 
+devloc is also used by the lvm test suite: the integrity tests
+(integrity.sh, integrity-caching.sh, integrity-blocksize-4.sh,
+integrity-syncaction.sh) locate the on-disk copy of a file with
+`aux devloc_file_blocks` + `aux devloc_sector_locations` and corrupt
+it at the exact offset with `aux corrupt_file_locations`, instead of
+searching whole devices for a data pattern.  These tests require
+loop-device backing (brd ramdisk devices process bios without a
+request queue and emit no block_rq_issue events; the tests set
+LVM_TEST_PREFER_BRD=0 for this reason).
+
 Both test scripts wrap lvm commands with
 `--config 'global { use_lvmlockd = 0 }'` because the test host's lvm
 build has experimental global-protect/PR locking that makes pv/vg

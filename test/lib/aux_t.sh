@@ -1151,6 +1151,150 @@ corrupt_dev() {
 	echo -n "$3" | LANG=C dd of="$1" bs=1 seek="$position" conv=notrunc,fdatasync
 }
 
+#
+# Locate the devloc binary (empirical file-to-disk locator,
+# see devloc/devloc.c).  Requires root and tracefs (kernel
+# tracepoints) at runtime.  Set $DEVLOC to override.
+devloc_bin() {
+	local bin="${DEVLOC-}"
+
+	if [ -z "$bin" ]; then
+		bin=$(command -v devloc 2>/dev/null) || bin=""
+	fi
+	if [ -z "$bin" ] && [ -n "${abs_top_builddir-}" ] && \
+	   [ -x "$abs_top_builddir/devloc/devloc" ]; then
+		bin="$abs_top_builddir/devloc/devloc"
+	fi
+	if [ -z "$bin" ] && [ -x "$TESTOLDPWD/../../devloc/devloc" ]; then
+		bin="$TESTOLDPWD/../../devloc/devloc"
+	fi
+	if [ -z "$bin" ] && [ -x "$TESTOLDPWD/../devloc/devloc" ]; then
+		bin="$TESTOLDPWD/../devloc/devloc"
+	fi
+	[ -n "$bin" ] || return 1
+	echo "$bin"
+}
+
+#
+# parse devloc --json observations into "<major>:<minor> <offset>" lines
+# (locations on leaf devices only; offsets in bytes)
+_devloc_parse_locations() {
+	awk '{
+		while (match($0, /"major": [0-9]+, "minor": [0-9]+, "offset": [0-9]+, "disk": "[^"]*", "disk_offset": [0-9]+, "verified": (true|false), "served": [0-9]+, "in_leaf_set": (true|false)/)) {
+			s = substr($0, RSTART, RLENGTH)
+			$0 = substr($0, RSTART + RLENGTH)
+			maj = s; sub(/.*"major": /, "", maj); sub(/,.*/, "", maj)
+			min = s; sub(/.*"minor": /, "", min); sub(/,.*/, "", min)
+			off = s; sub(/.*"offset": /, "", off); sub(/,.*/, "", off)
+			ils = s; sub(/.*"in_leaf_set": /, "", ils)
+			if (ils == "true")
+				print maj ":" min, off
+		}
+	}'
+}
+
+#
+# Map a file's data blocks to device-relative 512-byte sectors with
+# FIEMAP, for locating them on disk with devloc.  The filesystem must
+# be mounted; the file is synced first so the extents are on disk.
+# Prints the first sector of each 4KiB block of file data.
+#
+# $1  file path
+# $2  optional max number of blocks to report (default 16)
+devloc_file_blocks() {
+	local file=$1 max=${2:-16}
+
+	sync -f "$file" 2>/dev/null || sync
+
+	filefrag -v -b512 "$file" | awk -v max="$max" '
+		/^[[:space:]]*[0-9]+:/ {
+			l = $2; gsub(/\.\./, "", l); gsub(/:/, "", l)
+			h = $3; gsub(/:/, "", h)
+			pl = $4; gsub(/\.\./, "", pl)
+			# force numeric (gsub results compare as strings otherwise)
+			l += 0; h += 0; pl += 0
+			for (b = int(l / 8) * 8; b <= h && n < max; b += 8) {
+				print pl + b - l
+				n++
+			}
+		}'
+}
+
+#
+# Locate device sectors on the underlying devices with devloc: trigger
+# reads through the device and observe which leaf device and offset
+# serves them.  The device stack must be active.  Probe after any
+# caching layer has been flushed (e.g. after a deactivate/reactivate
+# cycle) so reads are served from the data area.  Prints
+# "<major>:<minor> <byte-offset>" lines.
+#
+# $1  device to probe through
+# $2...  sectors (from devloc_file_blocks)
+devloc_sector_locations() {
+	local device=$1
+	shift
+	local bin
+	bin=$(devloc_bin) || return 1
+
+	local out="" s
+	for s in "$@"; do
+		out+="$("$bin" --json --device "$device" --sector "$s" 2>/dev/null || true)"$'\n'
+	done
+	printf '%s' "$out" | _devloc_parse_locations
+}
+
+#
+# Corrupt a file's on-disk data on a specific device, writing
+# <pattern> at an exact location previously located with
+# devloc_file_blocks + devloc_sector_locations (typically applied with
+# the LV deactivated, like corrupt_dev).  The device is resolved
+# through dm-linear tables to the underlying device, so devices
+# mapping a region of a shared backing device (e.g. the linear devices
+# the test framework creates for PVs) match locations in their region.
+# Prints "corrupted <dev> at <offset>" when a location was corrupted;
+# prints nothing and still returns 0 when the device holds none of the
+# located blocks (matching corrupt_dev's silent skip).
+#
+# $1  locations (output of devloc_sector_locations)
+# $2  device to corrupt
+# $3  corruption pattern to write
+corrupt_file_locations() {
+	local locs=$1 dev=$2 pattern=$3
+	local mm off maj min sec
+	local dmaj dmin tstart dsz name table
+
+	# resolve the device through single-target dm-linear tables to
+	# the bottom device: (major, minor, start sector on the bottom
+	# device); the device's own size is preserved by linear maps
+	dmaj=$((16#$(stat -Lc %t "$dev")))
+	dmin=$((16#$(stat -Lc %T "$dev")))
+	# stat %s is 0 for unopened dm devices; blockdev opens the device
+	dsz=$(blockdev --getsz "$dev")
+	tstart=0
+	while name=$(cat "/sys/dev/block/$dmaj:$dmin/dm/name" 2>/dev/null) && [ -n "$name" ]; do
+		table=$(dmsetup table "$name" 2>/dev/null) || break
+		if [[ "$table" =~ ^0\ +([0-9]+)\ +linear\ +([0-9]+):([0-9]+)\ +([0-9]+)$ ]]; then
+			dmaj=${BASH_REMATCH[2]}
+			dmin=${BASH_REMATCH[3]}
+			tstart=$(( tstart + BASH_REMATCH[4] ))
+		else
+			break
+		fi
+	done
+
+	while read -r mm off; do
+		maj=${mm%%:*}
+		min=${mm##*:}
+		sec=$(( off / 512 ))
+		[ "$maj" = "$dmaj" ] && [ "$min" = "$dmin" ] || continue
+		[ "$sec" -ge "$tstart" ] && [ "$sec" -lt $(( tstart + dsz )) ] || continue
+		echo -n "$pattern" | LANG=C dd of="$dev" bs=1 seek=$(( off - tstart * 512 )) conv=notrunc,fdatasync status=none
+		echo "corrupted $dev at offset $(( off - tstart * 512 ))"
+		return 0
+	done <<< "$locs"
+	return 0
+}
+
 prepare_backing_dev() {
 	local size=${1=32}
 	shift

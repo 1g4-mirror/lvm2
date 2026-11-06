@@ -17,8 +17,10 @@ test "${LVM_VALGRIND:-0}" -eq 0 || skip # too slow test for valgrind
 aux have_fs ext4 || skip
 which resize2fs || skip
 aux have_integrity 1 5 0 || skip
-# Avoid 4K ramdisk devices on older kernels
-aux kernel_at_least  5 10 || export LVM_TEST_PREFER_BRD=0
+aux devloc_bin > /dev/null || skip "devloc not available"
+# devloc observes block_rq_issue events; brd ramdisk devices process
+# bios without a request queue and emit none, so use loop devices
+export LVM_TEST_PREFER_BRD=0
 
 mnt="mnt"
 mkdir -p "$mnt"
@@ -37,8 +39,8 @@ dd if=/dev/urandom of=randB bs=64K count=3 2>/dev/null
 dd if=/dev/urandom of=randC bs=64K count=4 2>/dev/null
 
 _prepare_vg() {
-	# zero devs so we are sure to find the correct file data
-	# on the underlying devs when corrupting it
+	# zero devs for a clean start (file data is located on the
+	# underlying devs with devloc, not by searching for patterns)
 	aux clear_devs "$dev1" "$dev2" "$dev3" "$dev4" "$dev5"
 	vgcreate $SHARED $vg "$dev1" "$dev2" "$dev3" "$dev4" "$dev5"
 	pvs
@@ -56,11 +58,26 @@ _test_fs_with_read_repair() {
 	cp fileB "$mnt"
 	cp fileC "$mnt"
 
+	# map fileB's first block to a device sector while the fs is
+	# mounted (only the first block is corrupted, like the original
+	# pattern search whose uppercase-B run exists in one block only;
+	# corrupting one copy keeps raid4/5/6 stripes repairable)
+	blocks=$(aux devloc_file_blocks "$mnt/fileB" 1)
+
 	umount "$mnt"
 	lvchange -an $vg/$lv1
 
+	# reactivate so caching layers (dm-integrity journal) are empty and
+	# devloc's probes are served from the data area on disk
+	lvchange -ay $vg/$lv1
+
+	# locate fileB's data on the underlying devs with devloc
+	devlocs=$(aux devloc_sector_locations "$DM_DEV_DIR/$vg/$lv1" $blocks)
+
+	lvchange -an $vg/$lv1
+
 	for dev in "$@"; do
-		aux corrupt_dev "$dev" BBBBBBBBBBBBBBBBB BBBBBBBBCBBBBBBBB
+		aux corrupt_file_locations "$devlocs" "$dev" BBBBBBBBCBBBBBBBB
 	done
 
 	lvchange -ay $vg/$lv1
@@ -231,7 +248,9 @@ aux wait_recalc $vg/${lv1}_rimage_1
 aux wait_recalc $vg/${lv1}_rimage_2
 aux wait_recalc $vg/${lv1}_rimage_3
 aux wait_recalc $vg/$lv1
-_test_fs_with_read_repair "$dev1" "$dev3"
+# no writemostly here, so devloc's locations may be served by any of
+# the raid10 legs: list them all
+_test_fs_with_read_repair "$dev1" "$dev2" "$dev3" "$dev4"
 lvs -o integritymismatches $vg/${lv1}_rimage_0
 lvs -o integritymismatches $vg/${lv1}_rimage_1
 lvs -o integritymismatches $vg/${lv1}_rimage_2
