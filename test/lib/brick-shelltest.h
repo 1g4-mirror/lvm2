@@ -18,7 +18,7 @@
 
 /*
  * (c) 2014 Petr Rockai <me@mornfall.net>
- * (c) 2014 Red Hat, Inc.
+ * (c) 2014-2026 Red Hat, Inc.
  */
 
 /* Redistribution and use in source and binary forms, with or without
@@ -71,6 +71,7 @@
 
 #ifdef __unix
 #include <sys/stat.h>
+#include <sys/file.h>
 #include <sys/resource.h> /* rusage */
 #include <sys/select.h>
 #include <sys/time.h>
@@ -106,6 +107,59 @@ void split( std::string s, C &c ) {
     while ( std::getline( ss, item, ',' ) )
         c.push_back( item );
 }
+
+// An exclusive flock(2) on a file, held until the object is destroyed and
+// released when the descriptor is closed.  The descriptor is close-on-exec,
+// so a process started by the suite does not keep the lock after it exits.
+class Flock {
+public:
+    explicit Flock( const char *path ):
+        fd( open( path, O_RDONLY | O_CREAT | O_CLOEXEC, 0666 ) ) {
+    }
+
+    ~Flock() {
+        if ( fd >= 0 )
+            (void) ::close( fd );
+    }
+
+    // One non-blocking attempt: 1 = locked, 0 = another process holds it,
+    // -1 = error in errno.  A signal does not answer whether the lock is
+    // free, so an interrupted attempt is retried.
+    int try_acquire() {
+        int r;
+
+        if ( fd < 0 )
+            return -1;
+
+        do
+            r = ::flock( fd, LOCK_EX | LOCK_NB );
+        while ( r && errno == EINTR );
+
+        if ( !r )
+            return 1;
+        return errno == EWOULDBLOCK ? 0 : -1;
+    }
+
+    // Blocking attempt: 1 = locked, -1 = error in errno.
+    int acquire() {
+        int r;
+
+        if ( fd < 0 )
+            return -1;
+
+        do
+            r = ::flock( fd, LOCK_EX );
+        while ( r && errno == EINTR );
+
+        return r ? -1 : 1;
+    }
+
+private:
+    Flock( const Flock &rhs ); // disable copy constructor
+    Flock &operator= ( const Flock &rhs ); // old way
+
+    int fd;
+};
 
 }
 

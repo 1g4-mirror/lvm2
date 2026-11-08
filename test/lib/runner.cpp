@@ -1,4 +1,4 @@
-/* -*- C++ -*- copyright (c) 2014 Red Hat, Inc.
+/* -*- C++ -*- copyright (c) 2014-2026 Red Hat, Inc.
  *
  * This file is part of LVM2.
  *
@@ -27,8 +27,63 @@
 
 #include "brick-shelltest.h"
 
+#include <cerrno>
+#include <cstring>
+#include <sys/stat.h>
+
+/*
+ * The suite owns the loop devices and the device-mapper namespace of the
+ * host, so two runs collide even when they use different test directories or
+ * build trees: the second one finds the devices of the first and skips its
+ * tests.  Serialize every run on the host with a lock in the LVM run
+ * directory and let a second run wait for the first.  LVM_TEST_PARALLEL asks
+ * the harness to tolerate that interference, so no lock is taken then.
+ */
+static const char test_lock_path[] = DEFAULT_RUN_DIR "/lvm2-testsuite.lock";
+
+static void lock_test_run( Flock &lock )
+{
+    if ( hasenv( "LVM_TEST_PARALLEL" ) )
+        return;
+
+    /* Shared run directory; lvm creates it the same way. */
+    if ( mkdir( DEFAULT_RUN_DIR, 0777 ) && errno != EEXIST ) {
+        std::cerr << "Cannot create " << DEFAULT_RUN_DIR << ": "
+                  << strerror( errno ) << ", running without the lock."
+                  << std::endl;
+        return;
+    }
+
+    switch ( lock.try_acquire() ) {
+    case 1:
+        return;
+    case 0:
+        break;
+    default:
+        std::cerr << "Cannot lock " << test_lock_path << ": "
+                  << strerror( errno ) << ", running without it." << std::endl;
+        return;
+    }
+
+    std::cout << "Waiting for another test run of the suite to finish..."
+              << std::flush;
+
+    if ( lock.acquire() < 0 ) {
+        std::cerr << " cannot lock " << test_lock_path << ": "
+                  << strerror( errno ) << std::endl;
+        return;
+    }
+
+    std::cout << " done." << std::endl;
+}
+
 int main(int argc, const char **argv)
 {
+    /* Held until main returns, that is for the whole run. */
+    Flock lock( test_lock_path );
+
+    lock_test_run( lock );
+
     try {
         return brick::shelltest::run( argc, argv, "LVM_TEST_FLAVOUR" );
     } catch (std::exception const& e) {
