@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2011-2026 Red Hat, Inc. All rights reserved.
  *
  * This file is part of LVM2.
  *
@@ -460,12 +460,8 @@ static int _raid_transient_status(struct dm_pool *mem,
 	if (!dm_get_status_raid(mem, params, &sr))
 		return_0;
 
-	if (sr->dev_count != seg->area_count) {
-		log_error("Active raid has a wrong number of raid images!");
-		log_error("Metadata says %u, kernel says %u.",
-			  seg->area_count, sr->dev_count);
-		goto out;
-	}
+	if (!raid_status_covers_segment(seg, sr))
+		goto_out;
 
 	if (seg->meta_areas)
 		for (i = 0; i < seg->area_count; ++i) {
@@ -531,6 +527,7 @@ static int _raid_target_present(struct cmd_context *cmd,
 		{ 1, 9, 2, RAID_FEATURE_FIXED_HEALTH_CHARS, "fixedhealthchars" },
 		{ 1, 12, 0, RAID_FEATURE_RESHAPE, "reshaping" },
 		{ 1, 14, 0, RAID_FEATURE_REBUILD_KEEPS_RECOVERY, "rebuildkeepsrecovery" },
+		{ 1, 15, 0, RAID_FEATURE_EXTEND_RESYNC, "extendresync" },
 	};
 
 	static int _raid_checked = 0;

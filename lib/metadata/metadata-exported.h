@@ -1331,6 +1331,9 @@ uint32_t raid_rimage_extents(const struct segment_type *segtype,
 uint32_t raid_ensure_min_region_size(const struct logical_volume *lv, uint64_t raid_size, uint32_t region_size);
 int lv_raid_change_region_size(struct logical_volume *lv,
                                int yes, int force, uint32_t new_region_size);
+int raid_status_covers_segment(const struct lv_segment *seg,
+			       const struct dm_status_raid *status);
+int lv_raid_can_resize(const struct logical_volume *lv);
 int lv_raid_in_sync(const struct logical_volume *lv);
 uint32_t lv_raid_data_copies(const struct segment_type *segtype, uint32_t area_count);
 int lv_raid_free_reshape_space(const struct logical_volume *lv);

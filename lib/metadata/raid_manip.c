@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2011-2017 Red Hat, Inc. All rights reserved.
+ * Copyright (C) 2011-2026 Red Hat, Inc. All rights reserved.
  *
  * This file is part of LVM2.
  *
@@ -354,11 +354,41 @@ static int _deactivate_and_remove_lvs(struct volume_group *vg, struct dm_list *r
 }
 
 /*
+ * dm-raid per-device health char for a raid set component.  See dm-raid.c
+ * status docs: 'A' = alive and in-sync, 'a' = alive but not in-sync (e.g.
+ * still recovering), 'D' = dead.
+ */
+#define RAID_DEV_HEALTH_ALIVE			'A'
+#define RAID_DEV_HEALTH_ALIVE_NOT_IN_SYNC	'a'
+
+/*
+ * Succeed if @status carries one health character per device the target
+ * reports.
+ *
+ * dm-raid before Linux 4.11 lists health characters only for the devices
+ * still in the array, while the #devs field counts every slot, which makes
+ * the characters unmappable to slots.  Linux 4.11 and later report a slot
+ * without a device as '-' and one character per slot, so a count mismatch
+ * can only come from such an older target, and it is refused.
+ */
+static int _raid_status_health_is_complete(const struct lv_segment *seg,
+					   const struct dm_status_raid *status)
+{
+	if (status->dev_count == status->advertised_dev_count)
+		return 1;
+
+	log_error("dm-raid reported %u health characters for %u devices on %s.",
+		  status->dev_count, status->advertised_dev_count,
+		  display_lvname(seg->lv));
+
+	return 0;
+}
+
+/*
  * HM Helper:
  *
- * read the status once and report its device count in @*kernel_devs, the
- * number of health characters in @*devs_health and how many of those
- * characters are alive in @*devs_in_sync
+ * report the kernel device count in @*kernel_devs and the number of health
+ * characters in @*devs_health, of which @*devs_in_sync are in sync
  */
 static int _get_dev_health(struct logical_volume *lv, uint32_t *kernel_devs,
 			   uint32_t *devs_health, uint32_t *devs_in_sync)
@@ -366,6 +396,7 @@ static int _get_dev_health(struct logical_volume *lv, uint32_t *kernel_devs,
 	struct lv_status_raid *status;
 	struct dm_status_raid *raid;
 	unsigned d;
+	int r = 0;
 
 	*devs_health = *devs_in_sync = 0;
 
@@ -375,26 +406,23 @@ static int _get_dev_health(struct logical_volume *lv, uint32_t *kernel_devs,
 	}
 
 	raid = status->raid;
-	*kernel_devs = raid->dev_count;
+	*kernel_devs = raid->advertised_dev_count;
+
+	if (!_raid_status_health_is_complete(first_seg(lv), raid))
+		goto_out;
 
 	d = (unsigned) strlen(raid->dev_health);
 	while (d--) {
 		(*devs_health)++;
-		if (raid->dev_health[d] == 'A')
+		if (raid->dev_health[d] == RAID_DEV_HEALTH_ALIVE)
 			(*devs_in_sync)++;
 	}
 
+	r = 1;
+out:
 	dm_pool_destroy(status->mem);
-
-	return 1;
+	return r;
 }
-
-/*
- * dm-raid per-device health char for a raid set component that is alive
- * but not in-sync (e.g. still recovering).  See dm-raid.c status docs:
- * 'A' = alive and in-sync, 'a' = alive but not in-sync, 'D' = dead.
- */
-#define RAID_DEV_HEALTH_ALIVE_NOT_IN_SYNC	'a'
 
 /*
  * Retry a no-progress status with an exponential backoff -- 50, 100, 200,
@@ -581,6 +609,121 @@ static int _raid_in_sync(const struct logical_volume *lv)
 int lv_raid_in_sync(const struct logical_volume *lv)
 {
 	return _raid_in_sync(lv);
+}
+
+/* The kernel is rebuilding or recovering a leg of the array. */
+static int _raid_sync_action_is_recovery(const char *sync_action)
+{
+	return sync_action &&
+	       (!strcmp(sync_action, "rebuild") || !strcmp(sync_action, "recover"));
+}
+
+/* Resizable: every leg alive and neither a rebuild nor a recovery running. */
+static int _raid_status_is_resizable(const struct lv_status_raid *status)
+{
+	const struct dm_status_raid *raid = status->raid;
+	uint32_t s;
+
+	for (s = 0; s < raid->dev_count; s++)
+		if (raid->dev_health[s] != RAID_DEV_HEALTH_ALIVE &&
+		    raid->dev_health[s] != RAID_DEV_HEALTH_ALIVE_NOT_IN_SYNC)
+			return 0;
+
+	return !_raid_sync_action_is_recovery(raid->sync_action);
+}
+
+/*
+ * Succeed if @status can be mapped onto @seg: its health string is complete
+ * and holds one character per area of the segment.  Callers that index the
+ * characters by area rely on both.
+ */
+int raid_status_covers_segment(const struct lv_segment *seg,
+			       const struct dm_status_raid *status)
+{
+	if (!_raid_status_health_is_complete(seg, status))
+		return_0;
+
+	if (status->dev_count != seg->area_count) {
+		log_error("Kernel and metadata device counts of %s differ.",
+			  display_lvname(seg->lv));
+		log_error("Metadata says %u, kernel says %u devices.",
+			  seg->area_count, status->dev_count);
+		return 0;
+	}
+
+	return 1;
+}
+
+/*
+ * Require a healthy running array before resizing a RAID LV: the resize
+ * cannot wait for a rebuild or a recovery that is still running, so it
+ * refuses; synchronizing or checking the array's own legs is fine.
+ *
+ * A partial LV is refused whatever its state.  A stopped array has no
+ * table to check, so a non-partial one passes.
+ */
+int lv_raid_can_resize(const struct logical_volume *lv)
+{
+	struct lv_segment *seg = first_seg(lv);
+	struct lv_status_raid *status;
+	enum raid_read_result read_result;
+	uint32_t s;
+	int r = 0;
+
+	if (lv_is_partial(lv)) {
+		log_error("Cannot resize partial RAID LV %s.", display_lvname(lv));
+		return 0;
+	}
+
+	if (!lv_is_active(lv))
+		return 1;
+
+	for (s = 0; s < seg->area_count; s++) {
+		if (seg_type(seg, s) != AREA_LV || !seg_lv(seg, s)) {
+			log_error("Cannot determine the health of %s: "
+				  "area %u has no LV.", display_lvname(lv), s);
+			return 0;
+		}
+		/*
+		 * Only the image flag is passed to dm-raid as a rebuild
+		 * request.  The kernel may still report the array idle, so
+		 * name the request instead of the state it will produce.
+		 */
+		if (seg_lv(seg, s)->status & LV_REBUILD) {
+			log_error("Cannot resize RAID LV %s while a rebuild is pending.",
+				  display_lvname(lv));
+			return 0;
+		}
+	}
+
+	/*
+	 * One stable snapshot: the retry waits out the 0% in-sync a target
+	 * may report right after a reload with every leg already in sync,
+	 * so a transient is not mistaken for a degraded array.
+	 */
+	read_result = _raid_status_read_stable(lv, seg->area_count, &status);
+	if (read_result != RAID_READ_OK) {
+		if (read_result == RAID_READ_STUCK)
+			return_0;
+
+		log_error("Cannot determine RAID status of %s.", display_lvname(lv));
+		return 0;
+	}
+
+	if (!raid_status_covers_segment(seg, status->raid))
+		goto_out;
+
+	/*
+	 * Only a healthy array can be resized: every leg is alive and none
+	 * is being rebuilt or recovered.  A resync, a check or a repair
+	 * rewrites the array's own data, so it does not stand in the way.
+	 */
+	if (!(r = _raid_status_is_resizable(status)))
+		log_error("Cannot resize RAID LV %s while it is recovering or degraded.",
+			  display_lvname(lv));
+out:
+	dm_pool_destroy(status->mem);
+	return r;
 }
 
 /*
@@ -3274,8 +3417,7 @@ static int _extract_image_components(struct lv_segment *seg, uint32_t idx,
  */
 static int _raid_sync_action_allows_image_change(const char *sync_action)
 {
-	return !strcmp(sync_action, "recover") ||
-	       !strcmp(sync_action, "rebuild") ||
+	return _raid_sync_action_is_recovery(sync_action) ||
 	       !strcmp(sync_action, "idle");
 }
 
@@ -3371,21 +3513,18 @@ static int _raid_allow_extraction(struct logical_volume *lv,
 		goto bad;
 	}
 
-	if (seg->area_count != strlen(dev_health)) {
-		log_error(INTERNAL_ERROR
-			  "RAID LV area_count differs from number of health characters");
-		goto bad;
-	}
+	if (!raid_status_covers_segment(seg, raid_status->raid))
+		goto_bad;
 
 	for (s = 0; s < seg->area_count; s++)
-		if (dev_health[s] == 'A')
+		if (dev_health[s] == RAID_DEV_HEALTH_ALIVE)
 			redundancy++;
 
 	for (s = 0; (s < seg->area_count) && extract_count; s++) {
 		if (!lv_is_on_pvs(seg_lv(seg, s), target_pvs) &&
 		    !lv_is_on_pvs(seg_metalv(seg, s), target_pvs))
 			continue;
-		if ((dev_health[s] == 'A') && !--redundancy) {
+		if ((dev_health[s] == RAID_DEV_HEALTH_ALIVE) && !--redundancy) {
 			log_error("Unable to remove all primary source devices");
 			goto bad;
 		}
@@ -3641,30 +3780,10 @@ static int _raid_recovering_images_rebuild_work(struct logical_volume *lv,
 	}
 
 	raid = raid_status->raid;
-	if (raid->dev_count != seg->area_count) {
-		/*
-		 * An in-sync degraded array can reach this workaround after
-		 * _raid_allow_extraction() has accepted it.  Only treat a short
-		 * health string as omitted failed components when the target's
-		 * advertised count matches metadata slots and metadata records
-		 * a failed component.  The shortened string cannot be mapped to
-		 * metadata slots, so skip only rebuild marking and let extraction
-		 * remove known failed components first.
-		 */
-		if ((raid->advertised_dev_count == seg->area_count) &&
-		    (raid->dev_count < raid->advertised_dev_count) &&
-		    _lv_get_nr_failed_components(lv)) {
-			log_debug("Skipping RAID rebuild marking for degraded %s.",
-				  display_lvname(lv));
-			goto out;
-		}
+	if (!raid_status_covers_segment(seg, raid))
+		goto_bad;
 
-		log_error("Active raid has a wrong number of raid images!");
-		goto bad;
-	}
-
-	if (!strcmp(raid->sync_action, "recover") ||
-	    !strcmp(raid->sync_action, "rebuild")) {
+	if (_raid_sync_action_is_recovery(raid->sync_action)) {
 		for (s = 0; s < seg->area_count; s++) {
 			if (raid->dev_health[s] !=
 			    RAID_DEV_HEALTH_ALIVE_NOT_IN_SYNC)
@@ -3690,7 +3809,6 @@ static int _raid_recovering_images_rebuild_work(struct logical_volume *lv,
 	if (*flags_set && sync_percent)
 		*sync_percent = raid_status->in_sync;
 
-out:
 	r = 1;
 bad:
 	if (own_status)

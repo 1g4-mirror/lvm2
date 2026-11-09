@@ -6024,6 +6024,18 @@ static int _lv_resize_check_cow_reduce(struct logical_volume *lv,
 	return r;
 }
 
+/*
+ * Only a growing redundant array is gated on its health: a stopped array
+ * has no table to check, and an activation has to deal with the legs that
+ * are present.
+ */
+static int _lv_resize_needs_raid_health(const struct logical_volume *lv,
+					const struct lvresize_params *lp)
+{
+	return (lp->extents > lv->le_count) && lv_is_raid(lv) &&
+	       !seg_is_any_raid0(first_seg(lv));
+}
+
 static int _lv_resize_check_type(struct logical_volume *lv,
 				 struct lvresize_params *lp)
 {
@@ -6106,6 +6118,10 @@ static int _lv_resize_check_type(struct logical_volume *lv,
 		    !_lv_resize_check_cow_reduce(lv, (uint64_t)lp->extents * lv->vg->extent_size))
 			return_0;
 	} else if (lp->resize == LV_EXTEND)  {
+		if (_lv_resize_needs_raid_health(lv, lp) &&
+		    !lv_raid_can_resize(lv))
+			return_0;
+
 		if (lv_is_thin_pool_metadata(lv) &&
 		    (!(seg = find_pool_seg(first_seg(lv))) ||
 		     !thin_pool_feature_supported(seg->lv, THIN_FEATURE_METADATA_RESIZE))) {
@@ -6910,6 +6926,35 @@ static int _fs_extend(struct cmd_context *cmd, struct logical_volume *lv,
 	return fs_extend_script(cmd, lv, fsinfo, lp->fsmode);
 }
 
+/*
+ * An older dm-raid target does not synchronize the new space of an
+ * extended set, so the grown area, and the parity of raid4/5/6, may stay
+ * undefined until the array is resynchronized.  Such a kernel cannot be
+ * asked to do it from the metadata, so leave the repair to the user.
+ * A target whose features cannot be queried counts as one of those.
+ */
+static void _warn_raid_extend_resync(const struct logical_volume *lv)
+{
+	const struct segment_type *segtype;
+	unsigned attrs = 0;
+
+	if (!lv_is_raid(lv) || seg_is_any_raid0(first_seg(lv)) ||
+	    lv_is_not_synced(lv))
+		return;
+
+	segtype = first_seg(lv)->segtype;
+	if (segtype->ops->target_present &&
+	    segtype->ops->target_present(lv->vg->cmd, NULL, &attrs) &&
+	    (attrs & RAID_FEATURE_EXTEND_RESYNC))
+		return;
+
+	log_warn("WARNING: The RAID target does not synchronize the new space of %s.",
+		 display_lvname(lv));
+	log_warn("WARNING: The new area and its redundancy may be inconsistent.");
+	log_warn("WARNING: Run \"lvchange --resync %s\" to synchronize the whole LV.",
+		 display_lvname(lv));
+}
+
 int lv_resize(struct cmd_context *cmd, struct logical_volume *lv,
 	      struct lvresize_params *lp)
 {
@@ -7424,6 +7469,9 @@ int lv_resize(struct cmd_context *cmd, struct logical_volume *lv,
 		if (!lv_update_and_reload(lv_top))
 			goto_out;
 		log_debug("Resized %s to %u extents.", display_lvname(lv_main), lp->extents);
+		/* Only an extension adds space that may need a resync. */
+		if (is_extend)
+			_warn_raid_extend_resync(lv_main);
 	}
 
  end_main:
