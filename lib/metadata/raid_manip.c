@@ -7927,7 +7927,17 @@ skip_alloc:
 			}
 		}
 
-	if (!lv_update_and_reload_origin(lv))
+	/*
+	 * A rebuild request is one-shot: the kernel consumed the arguments
+	 * from the table loaded above and is running the recovery.  Write the
+	 * cleared flags without reloading, because a reload would suspend the
+	 * array and wait for the running recovery I/O to drain first.  A
+	 * replace changes sub-LV names, so it still reloads.
+	 */
+	if (rebuild) {
+		if (!vg_write(lv->vg) || !vg_commit(lv->vg))
+			return_0;
+	} else if (!lv_update_and_reload_origin(lv))
 		return_0;
 
 	return 1;
