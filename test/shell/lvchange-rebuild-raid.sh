@@ -56,6 +56,12 @@ lvchange --yes --rebuild "$dev1" --rebuild "$dev3" $vg/$lv1
 [ $v1_9_0 -eq 1 ] && check raid_leg_status $vg $lv1 "aAaAAAAA"
 _sync "AAAAAAAA"
 
+# Repeating the same request must load the table again even though the
+# active table still carries the rebuild arguments from the previous one.
+lvchange --yes --rebuild "$dev1" --rebuild "$dev3" $vg/$lv1
+[ $v1_9_0 -eq 1 ] && check raid_leg_status $vg $lv1 "aAaAAAAA"
+_sync "AAAAAAAA"
+
 # Rebuild devices 1, 3, 6 from different mirror groups is fine.
 lvchange --yes --rebuild "$dev1" --rebuild "$dev3" --rebuild "$dev6" $vg/$lv1
 [ $v1_9_0 -eq 1 ] && check raid_leg_status $vg $lv1 "aAaAAaAA"
