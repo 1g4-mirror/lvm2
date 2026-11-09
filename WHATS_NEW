@@ -1,5 +1,7 @@
 Version 2.03.45 - 
 ==================
+  Warn that extending a RAID LV before dm-raid 1.15.0 needs a resync.
+  Refuse extending a RAID LV that is degraded or rebuilding a leg.
   Add configure --with-default-io-engine=ENGINE setting.
   Refuse to extend an active --nosync RAID LV that is not in sync.
   Honor the requested allocation PV list when adding integrity to a RAID LV.
