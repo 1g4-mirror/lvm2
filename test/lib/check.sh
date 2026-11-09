@@ -506,6 +506,15 @@ raid_action() {
 	return 1
 }
 
+# Succeed if the resize output in <FILE> carries the warning that the new
+# area needs a resync.  Put "not" in front on a target with extend resync,
+# which synchronizes the new space itself and stays silent.
+raid_resync_warning_present() {
+	grep -F "does not synchronize the new space" "$1" &&
+	grep -F "The new area and its redundancy may be inconsistent" "$1" &&
+	grep -F "lvchange --resync" "$1"
+}
+
 # Trace the command and check how many reads it submitted.
 # SPEC is the "SYSCALL OPTIONS" line printed by aux io_trace,
 # which names the syscall to count and the options that trace it;
