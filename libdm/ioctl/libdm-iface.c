@@ -2037,14 +2037,18 @@ static int _raid_params_equiv(const char *p1, const char *p2,
  *   VG metadata after the first activation (integrity_manip.c), so
  *   subsequent activations omit it from the table line, but the kernel
  *   still reports it from the superblock.  A reload cannot remove the
- *   flag, so treat it as cosmetic in both directions.
+ *   flag, so the token is not part of the table identity.  A new table
+ *   that asks for it is still loaded, because the integrity node marks
+ *   the reload required when recalculate is set.
  *
  * - kernel may add tokens LVM did not set (buffer_sectors,
  *   journal_watermark, commit_time, etc.)
  *
  * Skipped tokens are listed in _integrity_skip_p1_token().
  * We verify every non-skipped token we emit exists in the kernel output.
- * Extra kernel tokens are acceptable.
+ * Extra kernel tokens are acceptable.  Ignoring a new-side recalculate
+ * cannot drop the request: dm_tree_node_add_integrity_target() forces
+ * the load.
  */
 
 /* Tokens LVM emits that the kernel may legitimately omit */

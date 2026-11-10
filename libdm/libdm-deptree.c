@@ -4276,6 +4276,18 @@ int dm_tree_node_add_integrity_target(struct dm_tree_node *node,
 	seg->integrity_settings = *settings;
 	seg->integrity_recalculate = recalculate;
 
+	/*
+	 * "recalculate" is a one-shot request: the kernel consumes it when
+	 * the table is loaded and sets SB_FLAG_RECALCULATING.  The token is
+	 * not part of the table identity (see _integrity_params_equiv()), so
+	 * a request on an otherwise identical table would be suppressed and
+	 * never reach the kernel.  The request alone does not change device
+	 * limits, so an identical table still loads as LOAD_SAME and its
+	 * parent is not reloaded.
+	 */
+	if (recalculate)
+		node->props.reload_required = 1;
+
 	return 1;
 }
 

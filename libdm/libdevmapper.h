@@ -2065,6 +2065,13 @@ struct dm_integrity_settings {
 	unsigned allow_discards_set:1;
 };
 
+/*
+ * A "recalculate" request is a one-shot argument: the kernel consumes it
+ * at load and keeps the resulting flag in the superblock, so the table
+ * load is forced even when the table is identical to the active one.
+ * The request does not change device limits, so an otherwise identical
+ * load does not reload its parent.
+ */
 int dm_tree_node_add_integrity_target(struct dm_tree_node *node,
 				uint64_t size,
 				const char *origin_uuid,
