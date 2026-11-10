@@ -1862,6 +1862,11 @@ uint64_t dm_task_get_existing_table_size(const struct dm_task *dmt)
 	return dmt->existing_table_size;
 }
 
+int dm_task_get_existing_table_identical(const struct dm_task *dmt)
+{
+	return dmt->existing_table_identical;
+}
+
 /*
  * Skip "rebuild N" or "write_mostly N" token pair.
  * Old dm-raid may drop these from table output.
@@ -1888,11 +1893,12 @@ static int _skip_raid_volatile_token(const char **pp)
 }
 
 /*
- * Skip optional "sync" or "nosync" flag token in the active table.
- * External tools (dmsetup) may inject these to force a resync and the
- * kernel keeps reporting the token in STATUSTYPE_TABLE afterwards, while
- * LVM metadata does not.  Dropping it via reload is rejected with EINVAL,
- * so the token is ignored when comparing against the active table only.
+ * Skip an optional "sync" or "nosync" flag token.
+ * The kernel keeps reporting the token in STATUSTYPE_TABLE after the
+ * resync it started, while the metadata may already have dropped it, so
+ * the two tables can differ by the token alone.  Reloading a table that
+ * drops it while the resync is running is rejected with EINVAL, so the
+ * token is treated as not part of the table identity.
  */
 static int _skip_raid_sync_flag(const char **pp)
 {
@@ -1927,10 +1933,12 @@ static int _skip_raid_sync_flag(const char **pp)
  * mismatches that defeat reload suppression.  We skip the param
  * count and ignore volatile "rebuild N" / "write_mostly N" pairs.
  *
- * "sync" / "nosync" may also differ: an externally forced resync
- * leaves the token in the active table only, so it is skipped there.
- * The new table (p1) is never skipped -- a sync/nosync it carries is
- * a deliberate force/avoid-resync request and must trigger a reload.
+ * "sync" / "nosync" are one-shot arguments, not table state: the kernel
+ * keeps the token in the active table after a forced resync, so the two
+ * sides can differ even when the tables are otherwise the same.  Both
+ * sides are ignored here; a sync the new table asks for still marks the
+ * load required, and nosync is a creation-time hint that the initial
+ * load already delivered.
  *
  * The 'suspended' flag gates which side gets the volatile skip.
  * Do not simplify this to always-symmetric or always-asymmetric.
@@ -1971,9 +1979,12 @@ static int _raid_params_equiv(const char *p1, const char *p2,
 
 	for (;;) {
 		/*
-		 * Stale sync/nosync from an externally forced resync only
-		 * appears in the active table; never skip the new table.
+		 * A one-shot sync or nosync token is not part of the table
+		 * identity; ignore it on both sides.  The load that has to
+		 * deliver it is forced, so the comparison cannot drop it.
 		 */
+		while (*s1 && _skip_raid_sync_flag(&s1))
+			;
 		while (*s2 && _skip_raid_sync_flag(&s2))
 			;
 
@@ -2227,6 +2238,13 @@ static int _reload_with_comparison_v4(struct dm_task *dmt)
 		identical = 1;
 
 no_match:
+	/*
+	 * Record the comparison even when the policy requires the load:
+	 * the caller needs to distinguish an argument-only reload from a
+	 * changed table.
+	 */
+	dmt->existing_table_identical = identical;
+
 	if (identical && dmt->reload_policy == DM_RELOAD_COMPARE_SKIP_IDENTICAL) {
 		dmt->dmi.v4 = task->dmi.v4;
 		task->dmi.v4 = NULL;

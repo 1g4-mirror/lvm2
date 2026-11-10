@@ -232,6 +232,7 @@ struct load_segment {
 typedef enum {
 	LOAD_NONE,	/* Not loaded by this tree */
 	LOAD_SKIPPED,	/* Identical to the active table, kernel untouched */
+	LOAD_SAME,	/* Loaded although identical to the active table */
 	LOAD_CHANGED	/* Loaded a table that differs from the active one */
 } load_result_t;
 
@@ -283,10 +284,22 @@ struct load_properties {
 	unsigned delay_resume_if_extended;
 
 	/*
-	 * A child load may have changed device limits, so reload this
-	 * table to propagate those limits.  The pre-3.x failure workaround
-	 * for this case is handled in _load_node().
+	 * Reasons to load the table even when it is identical to the
+	 * active one.
+	 *
+	 * reload_required: the target needs the load itself, e.g. to pass
+	 * a request the kernel consumes at load (a raid sync or rebuild, an
+	 * integrity recalculate).  A failed load is always an error.
+	 *
+	 * reload_due_to_child: a child load may have changed device limits, so
+	 * reload this table to propagate those limits.  The pre-3.x failure
+	 * workaround for this case is handled in _load_node().
+	 *
+	 * Neither reason forces a load while the node is suspended: the
+	 * preload run loads every table, and a load after the suspend may
+	 * allocate memory with the device stopped.
 	 */
+	unsigned reload_required;
 	unsigned reload_due_to_child;
 
 	/*
@@ -3250,6 +3263,7 @@ static int _emit_segment(struct dm_task *dmt, uint32_t major, uint32_t minor,
 static int _load_node(struct dm_tree_node *dnode)
 {
 	int r = 0;
+	int load_wanted;
 	unsigned kmaj = 0, kmin = 0, krel = 0;
 	struct dm_task *dmt;
 	struct load_segment *seg;
@@ -3281,12 +3295,33 @@ static int _load_node(struct dm_tree_node *dnode)
 				   seg, &seg_start))
 			goto_out;
 
-	if (dnode->props.reload_due_to_child) {
+	/*
+	 * The preload run loads every table while the devices still run: a
+	 * target constructor allocates memory, and reclaim may need the
+	 * very device the suspend has stopped, so a load after the suspend
+	 * can deadlock.  A node that is suspended here never forces,
+	 * whatever the reason: an identical table is the one already in
+	 * place, a one-shot request in it (a raid sync or rebuild entry,
+	 * an integrity recalculate) was delivered by the load that
+	 * installed that table, and the limits of a changed child belong
+	 * to the preload run as well.  dm_task_run() reports a load made
+	 * here as an internal error.  A table that differs does load: the
+	 * resume cannot repair the table afterwards, so on this already
+	 * broken path that is the least bad option.
+	 */
+	load_wanted = dnode->props.reload_required ||
+		      dnode->props.reload_due_to_child;
+
+	if (!dnode->info.suspended && load_wanted) {
 		dmt->reload_policy = DM_RELOAD_COMPARE_ALWAYS_LOAD;
-		log_debug_activation("Forcing %s table reload for a changed child.",
-				     _node_name(dnode));
-	} else
+		log_debug_activation("Forcing %s table reload%s.", _node_name(dnode),
+				     dnode->props.reload_due_to_child ? " for changed child" : "");
+	} else {
+		if (load_wanted)
+			log_debug_activation("Suspended %s compares instead of forcing a reload.",
+					     _node_name(dnode));
 		dmt->reload_policy = DM_RELOAD_COMPARE_SKIP_IDENTICAL;
+	}
 
 	if ((r = dm_task_run(dmt))) {
 		r = dm_task_get_info(dmt, &dnode->info);
@@ -3296,7 +3331,9 @@ static int _load_node(struct dm_tree_node *dnode)
 				log_verbose("Suppressed %s identical reload.",
 					    _node_name(dnode));
 				dnode->props.load_result = LOAD_SKIPPED;
-			} else
+			} else if (dm_task_get_existing_table_identical(dmt))
+				dnode->props.load_result = LOAD_SAME;
+			else
 				dnode->props.load_result = LOAD_CHANGED;
 		}
 
@@ -3330,6 +3367,7 @@ static int _load_node(struct dm_tree_node *dnode)
 			}
 		}
 	} else if (dnode->props.reload_due_to_child &&
+		   !dnode->props.reload_required &&
 		   get_uname_version(&kmaj, &kmin, &krel) && kmaj < 3) {
 		/*
 		 * Legacy workaround: snapshot table reloads can fail without COW
@@ -3337,6 +3375,7 @@ static int _load_node(struct dm_tree_node *dnode)
 		 * before 3.0, tolerate a dm_task_run() failure for a reload
 		 * requested only for a child and clear that request.  This does
 		 * not check whether the table was identical or why the task failed.
+		 * A reload required by the target itself must still succeed.
 		 */
 		log_debug_activation("Forced reload of %s failed, continuing.",
 				     _node_name(dnode));
@@ -3405,12 +3444,14 @@ static int _dm_tree_wait_and_revert_activated(struct dm_tree_node *dnode)
  *
  * Reloading a table lets the kernel refresh device limits from its
  * children.  A load that may have changed the limits has to reach every
- * ancestor: a changed table, or an identical one loaded for its own
+ * ancestor: a changed table, or an identical one reloaded for its own
  * changed child, since the new limits come from further down.
  *
- * Keep suppressing tables made entirely of error and zero targets, as
- * these may be teardown placeholders.  A different size always makes the
- * table differ, so it needs no separate check.
+ * An identical table loaded only for reload_required (a one-shot
+ * argument) changes no limits.  Keep suppressing tables made entirely
+ * of error and zero targets, as these may be teardown placeholders.
+ * A different size always makes the table differ, so it needs no
+ * separate check.
  */
 static int _parent_needs_reload(const struct dm_tree_node *child)
 {
@@ -3429,6 +3470,8 @@ static int _parent_needs_reload(const struct dm_tree_node *child)
 	switch (child->props.load_result) {
 	case LOAD_CHANGED:
 		return 1;
+	case LOAD_SAME:
+		return child->props.reload_due_to_child;
 	default:
 		return 0;
 	}
@@ -3956,6 +3999,24 @@ int dm_tree_node_add_raid_target_with_params_v2(struct dm_tree_node *node,
 	seg->min_recovery_rate = p->min_recovery_rate;
 	seg->max_recovery_rate = p->max_recovery_rate;
 	seg->flags = p->flags;
+	/*
+	 * A target argument can be a request the kernel consumes at load;
+	 * the reported table keeps it, so a repeated request compares
+	 * identical to the live table and the reload suppression would drop
+	 * it.  DM_FORCESYNC (a sync) and a rebuild entry are such requests
+	 * and both mark the load required here; an integrity recalculate is
+	 * the same kind of request, set by the integrity initializer.  The
+	 * request alone changes no device limits, so an otherwise identical
+	 * table still loads as LOAD_SAME and its parent is not reloaded.
+	 */
+	if (p->flags & DM_FORCESYNC)
+		node->props.reload_required = 1;
+
+	for (i = 0; i < RAID_BITMAP_SIZE; i++)
+		if (p->rebuilds[i]) {
+			node->props.reload_required = 1;
+			break;
+		}
 
 	return 1;
 }

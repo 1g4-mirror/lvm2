@@ -1933,7 +1933,14 @@ int dm_tree_node_add_raid_target_with_params(struct dm_tree_node *node,
 					     uint64_t size,
 					     const struct dm_tree_node_raid_params *p);
 
-/* Version 2 API function taking dm_tree_node_raid_params_v2 for aforementioned extensions. */
+/*
+ * Version 2 API function taking dm_tree_node_raid_params_v2 for aforementioned extensions.
+ *
+ * A segment that carries a request the kernel consumes at load (a sync
+ * flag, a non-zero rebuilds entry) also lets this node's table load when
+ * it is identical to the active one, so the request reaches the kernel.
+ * The version 1 constructors delegate here and behave the same way.
+ */
 int dm_tree_node_add_raid_target_with_params_v2(struct dm_tree_node *node,
 						uint64_t size,
 						const struct dm_tree_node_raid_params_v2 *p);

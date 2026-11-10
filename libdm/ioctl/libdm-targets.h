@@ -69,6 +69,7 @@ struct dm_task {
 	enum dm_reload_policy reload_policy;
 	dm_add_node_t add_node;
 	uint64_t existing_table_size;
+	int existing_table_identical;
 	int cookie_set;
 	int new_uuid;
 	int secure_data;
@@ -101,5 +102,6 @@ int dm_ioctl_exec(int fd, struct dm_task *dmt, struct dm_ioctl *dmi);
 
 int dm_check_version(void);
 uint64_t dm_task_get_existing_table_size(const struct dm_task *dmt);
+int dm_task_get_existing_table_identical(const struct dm_task *dmt);
 
 #endif
