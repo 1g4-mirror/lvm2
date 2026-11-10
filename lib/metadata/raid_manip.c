@@ -356,36 +356,35 @@ static int _deactivate_and_remove_lvs(struct volume_group *vg, struct dm_list *r
 /*
  * HM Helper:
  *
- * report health string in @*raid_health for @lv from kernel reporting # of devs in @*kernel_devs
+ * read the status once and report its device count in @*kernel_devs, the
+ * number of health characters in @*devs_health and how many of those
+ * characters are alive in @*devs_in_sync
  */
 static int _get_dev_health(struct logical_volume *lv, uint32_t *kernel_devs,
-			   uint32_t *devs_health, uint32_t *devs_in_sync,
-			   char **raid_health)
+			   uint32_t *devs_health, uint32_t *devs_in_sync)
 {
+	struct lv_status_raid *status;
+	struct dm_status_raid *raid;
 	unsigned d;
-	char *rh;
 
 	*devs_health = *devs_in_sync = 0;
 
-	if (!lv_raid_dev_count(lv, kernel_devs)) {
-		log_error("Failed to get device count.");
-		return 0;
-	}
-
-	if (!lv_raid_dev_health(lv, &rh)) {
+	if (!lv_raid_status(lv, &status)) {
 		log_error("Failed to get device health.");
 		return 0;
 	}
 
-	d = (unsigned) strlen(rh);
+	raid = status->raid;
+	*kernel_devs = raid->dev_count;
+
+	d = (unsigned) strlen(raid->dev_health);
 	while (d--) {
 		(*devs_health)++;
-		if (rh[d] == 'A')
+		if (raid->dev_health[d] == 'A')
 			(*devs_in_sync)++;
 	}
 
-	if (raid_health)
-		*raid_health = rh;
+	dm_pool_destroy(status->mem);
 
 	return 1;
 }
@@ -2010,7 +2009,7 @@ static int _reshaped_state(struct logical_volume *lv, const unsigned dev_count,
 	if (!devs_health || !devs_in_sync)
 		return_0;
 
-	if (!_get_dev_health(lv, &kernel_devs, devs_health, devs_in_sync, NULL))
+	if (!_get_dev_health(lv, &kernel_devs, devs_health, devs_in_sync))
 		return_0;
 
 	if (kernel_devs == dev_count)

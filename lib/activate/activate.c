@@ -281,10 +281,6 @@ int lv_raid_dev_health(const struct logical_volume *lv, char **dev_health)
 {
 	return 0;
 }
-int lv_raid_dev_count(const struct logical_volume *lv, uint32_t *dev_cnt)
-{
-	return 0;
-}
 int lv_raid_mismatch_count(const struct logical_volume *lv, uint64_t *cnt)
 {
 	return 0;
@@ -1177,28 +1173,6 @@ int lv_raid_dev_health(const struct logical_volume *lv, char **dev_health)
 	dm_pool_destroy(raid_status->mem);
 
 	return r;
-}
-
-int lv_raid_dev_count(const struct logical_volume *lv, uint32_t *dev_cnt)
-{
-	struct lv_status_raid *raid_status;
-
-	*dev_cnt = 0;
-
-	if (!lv_info(lv->vg->cmd, lv, 0, NULL, 0, 0))
-		return 0;
-
-	log_debug_activation("Checking raid device count for LV %s.",
-			     display_lvname(lv));
-
-	if (!lv_raid_status(lv, &raid_status))
-		return_0;
-
-	*dev_cnt = raid_status->raid->dev_count;
-
-	dm_pool_destroy(raid_status->mem);
-
-	return 1;
 }
 
 int lv_raid_mismatch_count(const struct logical_volume *lv, uint64_t *cnt)
