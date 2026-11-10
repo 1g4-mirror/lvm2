@@ -189,11 +189,11 @@ prepare_dmeventd() {
 	echo $! > LOCAL_DMEVENTD
 
 	# FIXME wait for pipe in /var/run instead
-	for i in {200..0} ; do
+	for i in {400..0} ; do
 		[[ "$i" -eq 0 ]] && die "Startup of dmeventd is too slow."
 		[[ -e "${DMEVENTD_PIDFILE}" ]] && break
 		echo -n .
-		sleep .1
+		sleep .05
 	done
 	echo ok
 }
@@ -209,10 +209,10 @@ prepare_lvmpolld() {
 	echo -n "## preparing lvmpolld..."
 	$run_valgrind lvmpolld -f "$@" -s "$TESTDIR/lvmpolld.socket" -B "$TESTDIR/lib/lvm" -l all &
 	echo $! > LOCAL_LVMPOLLD
-	for i in {200..0} ; do
+	for i in {400..0} ; do
 		[[ -e "$TESTDIR/lvmpolld.socket" ]] && break
 		echo -n .
-		sleep .1
+		sleep .05
 	done # wait for the socket
 	[[ "$i" -gt 0 ]] || die "Startup of lvmpolld is too slow."
 	echo ok
@@ -320,11 +320,11 @@ prepare_lvmdbusd() {
 
 	echo -n "## checking lvmdbusd IS running..."
 	if which dbus-send &>/dev/null ; then
-	for i in {100..0}; do
+	for i in {200..0}; do
 		[[ -d "/proc/$pid" ]] || die "lvmdbusd died!"
 		dbus-send --system --dest=org.freedesktop.DBus --type=method_call --print-reply /org/freedesktop/DBus org.freedesktop.DBus.ListNames > dbus_services
 		grep -q com.redhat.lvmdbus1 dbus_services && break
-		sleep .1
+		sleep .05
 	done
 	if [[ "$i" -eq 0 ]]; then
 		printf "\nFailed to serve lvm dBus service in 10 seconds.\n"
@@ -1983,9 +1983,9 @@ udev_wait() {
 # wait_for_sync <VG/LV>
 wait_for_sync() {
 	local i
-	for i in {1..100} ; do
+	for i in {1..400} ; do
 		check in_sync "$@" && return
-		sleep .2
+		sleep .05
 	done
 
 	echo "Sync is taking too long - assume stuck."
@@ -2003,9 +2003,9 @@ wait_for_sync() {
 wait_raid_state() {
 	local i
 
-	for i in {1..100}; do
+	for i in {1..200}; do
 		check raid_action "$@" && return 0
-		sleep .1
+		sleep .05
 	done
 
 	die "RAID $1/$2 did not reach a state of \"${*:3}\""
@@ -2015,13 +2015,13 @@ wait_recalc() {
 	local sync
 	local checklv=$1
 
-	for i in {1..200} ; do
+	for i in {1..400} ; do
 		sync=$(get lv_field "$checklv" sync_percent | cut -d. -f1)
 		echo "sync_percent is $sync"
 
 		[[ "$sync" = "100" ]] && return
 
-		sleep .1
+		sleep .05
 	done
 
 	# TODO: There is some strange bug, first leg of RAID with integrity
@@ -2181,13 +2181,13 @@ get_vdo_stat() {
 wait_for_vdo_index() {
 	local dmname="$1"
 	local i
-	for i in {1..50}; do
+	for i in {1..100}; do
 		local status=()
 		status=( $(dmsetup status "$dmname") )
 		# Index state comes before compression state in VDO status;
 		# check "opening" is absent to avoid matching compression "online"
 		[[ "${status[6]}" = "online" ]] && return 0
-		sleep .1
+		sleep .05
 	done
 	echo "Timed out waiting for VDO index to come online"
 	return 1
@@ -2326,11 +2326,11 @@ check_lvmpolld_init_rq_count() {
 }
 
 wait_pvmove_lv_ready() {
-	# given sleep .1 this is about 20 secs of waiting
+	# given sleep .05 the sleeps alone last about 10 secs
 	local lvid=()
 	local all
 
-	for i in {100..0}; do
+	for i in {200..0}; do
 		if [[ -e LOCAL_LVMPOLLD ]]; then
 			if [[ "${#lvid[@]}" -eq "$#"  ]]; then
 				lvmpolld_dump > lvmpolld_dump.txt
@@ -2356,7 +2356,7 @@ wait_pvmove_lv_ready() {
 			dmsetup info -c --noheadings -o tables_loaded "$@" >out 2>/dev/null || true
 			[[ "$(grep -c Live out)" = "$#" ]] && return
 		fi
-		sleep .1
+		sleep .05
 	done
 
 	[[ -e LOCAL_LVMPOLLD ]] && die "Waiting for lvmpolld timed out"
@@ -2372,7 +2372,7 @@ wait_pvmove_lv_started_in_vg() {
 	shift
 	local want=0 pid n
 
-	for i in {100..0}; do
+	for i in {200..0}; do
 		want=0
 		for pid in "$@"; do
 			kill -0 "$pid" 2>/dev/null && want=$((want + 1))
@@ -2381,7 +2381,7 @@ wait_pvmove_lv_started_in_vg() {
 		n=$(lvs -a --noheadings -S 'name=~"^pvmove[0-9]+$"' "$vg" \
 		    2>/dev/null | wc -l)
 		[[ "${n:-0}" -ge "$want" ]] && return
-		sleep .1
+		sleep .05
 	done
 
 	die "Waiting for pvmove in $vg to start timed out"
@@ -2397,12 +2397,12 @@ hold_device_open() {
 	sleep "$sec" < "$DM_DEV_DIR/$vgname/$lvname" >/dev/null 2>&1 &
 	SLEEP_PID=$!
 	# wait till device is opened
-	for i in {1..50}; do
+	for i in {1..100}; do
 		if [[ "$(dmsetup info --noheadings -c -o open "$vgname"-"$lvname")" -ne 0  ]]; then
 			echo "$SLEEP_PID"
 			return
 		fi
-		sleep .1
+		sleep .05
 	done
 
 	die "$vgname-$lvname expected to be opened, but it's not!"

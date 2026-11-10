@@ -456,7 +456,7 @@ raid_leg_status() {
 	local sync_total
 
 	# Ignore inconsistent raid status 0/xxxxx idle
-	for i in {100..0} ; do
+	for i in {200..0} ; do
 		st=( $(dmsetup status --noflush "$1-$2") ) || \
 			die "Unable to get status of $1/$2"
 		case "${st[7]}" in
@@ -480,7 +480,7 @@ raid_leg_status() {
 			[[ "${st[5]}" = "$3" ]] || break
 			return 0
 		}
-		sleep .1
+		sleep .05
 	done
 
 	die "$1-$2 status ${st[5]} != $3  (${st[*]})"
