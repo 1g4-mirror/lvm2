@@ -328,25 +328,31 @@ int dm_get_status_mirror(struct dm_pool *mem, const char *params,
 /*
  * Parse params from STATUS call for raid target.
  *
- * With upstream dm-raid target versions 1.9.0 and 1.9.1, a failed component
- * may be omitted from the health string.  This was fixed in target 1.9.2
- * (upstream Linux 4.11).  For the affected versions, dev_count may be smaller
- * than the advertised RAID device count; callers mapping those chars to RAID
- * slots must handle the mismatch.
+ * dev_count is the number of health characters libdm stored in dev_health
+ * and advertised_dev_count is the <#devs> field the kernel sent.  Each
+ * character stands for one device slot, so the string can be mapped onto
+ * the devices of a segment only while the two counts agree.
+ *
+ * dm-raid 1.9.0 and 1.9.1 can report fewer characters than the device
+ * count they advertise; 1.9.2 and later report one character per device.
+ * A caller that needs the positions has to compare the two counts first.
  */
 struct dm_status_raid {
 	uint64_t reserved;
 	uint64_t total_regions;		/* sectors */
 	uint64_t insync_regions;	/* sectors */
 	uint64_t mismatch_count;
-	uint32_t dev_count;
+	uint32_t dev_count;		/* health characters in dev_health */
 	char *raid_type;
-	/* A - alive,  a - alive not in-sync,  D - dead/failed */
+	/*
+	 * A - alive,  a - alive not in-sync,
+	 * D - dead/failed,  - - no device at this slot
+	 */
 	char *dev_health;
 	/* idle, frozen, resync, recover, check, repair */
 	char *sync_action;
 	uint64_t data_offset; /* RAID out-of-place reshaping */
-	uint32_t advertised_dev_count; /* #devs field in status */
+	uint32_t advertised_dev_count; /* <#devs>, may exceed dev_count */
 };
 
 int dm_get_status_raid(struct dm_pool *mem, const char *params,
