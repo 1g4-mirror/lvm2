@@ -136,14 +136,14 @@ test-single:
     - mount -o remount,dev /dev/shm
     # TODO: Need to distinguish failed test from failed harness
     # TODO: Also need a way to find if run is incomplete, e.g. full disk resulting in many skipped tests
-    - VERBOSE=0 BATCH=1 LVM_TEST_DIR=/dev/shm/lvm2-test make check || true
+    - VERBOSE=0 BATCH=1 LVM_TEST_DIR=/dev/shm/lvm2-test T="$(SKIP_FILE="ci/SKIP_SMOKE" ci/tests.sh | paste -sd ',' -)" make check || true
     - rm -rf /dev/shm/lvm2-test
     - cut -d' ' -f2 test/results/list | sort | uniq -c
     # Filter artifacts - keep only logs from tests which are not pass
     - (cd test/results && rm $(grep 'passed$' list | cut -d' ' -f1 | sed -e 's|/|_|g' -e 's|.*|\0.txt|'))
     - find test/results -type f -empty -delete
     # TODO: Keep a list of known failures, and translate into regexp - or simply use python...
-    - if grep failed test/results/list | grep -v '\(dbustest\|lvconvert-mirror\|lvconvert-raid-reshape-size\|lvconvert-raid-reshape-stripes-load-fail\)\.sh' | sort; then false; else true; fi
+    - if ci/ignore.sh < "list" | grep -v "^[[:space:]]*$"; then false; else true; fi
   rules:
     - if: $CI_MERGE_REQUEST_TITLE =~ /^Draft:/
       when: never
