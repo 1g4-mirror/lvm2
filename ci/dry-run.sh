@@ -5,10 +5,6 @@ die() {
 	exit 2
 }
 
-hash() {
-	git log -1 --pretty="format:%h" "$@"
-}
-
 IGNORE_SPEC='\|spec/'
 while [[ -n "$*" ]]; do
 case "$1" in
@@ -28,8 +24,6 @@ done
 # TODO: This just compares HEAD with main. Do we care about other branches?
 HEAD="${1:-"HEAD"}"
 TARGET=${2:-"origin/main"}
-
-answ=0
 
 echo -e "\nFiles changed in the MR:"
 git diff --exit-code --name-only "${HEAD}" "^${TARGET}"
