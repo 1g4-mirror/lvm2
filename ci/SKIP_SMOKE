@@ -1,0 +1,108 @@
+# Comments are ignored.
+# Each of lines here SHOULD have a BZ or JIRA attached.
+
+# This is unstable test, it never worked properly in upstrem
+shell/lvconvert-raid-reshape-stripes-load-fail.sh
+
+# TODO: Retest all if they work in gating environment!
+# TODO: break dbus tests into particular test cases. We want logs for each
+# failed to be separately available!
+api/dbustest.sh
+#shell/001-basic.sh
+shell/fsadm-crypt.sh
+shell/inconsistent-metadata.sh
+shell/lvconvert-cache-abort.sh
+shell/lvconvert-raid-reshape.sh
+shell/lvconvert-raid-takeover.sh
+shell/lvm-on-md.sh
+shell/read-ahead.sh
+shell/thin-flags.sh
+shell/vgchange-many.sh
+
+# Testing skipping:
+#shell/.*
+#shell/vg
+#/vg
+
+# LONG RUNNING TESTS
+# Tests running over 1 minute:
+dbus
+shell/integrity-caching.sh
+shell/integrity.sh
+shell/lvconvert-raid-reshape-size.sh
+
+# Tests running over 10 seconds:
+shell/cache-single-split.sh
+shell/cachevol-cachedevice.sh
+shell/devicesfile-refresh-extended.sh
+shell/dmeventd-optimization.sh
+shell/fsadm-crypt-fsresize.sh
+shell/fsadm-crypt.sh
+shell/integrity-blocksize-3.sh
+shell/integrity-blocksize-4.sh
+shell/integrity-blocksize.sh
+shell/integrity-dmeventd.sh
+shell/integrity-large.sh
+shell/integrity-misc.sh
+shell/integrity-percent.sh
+shell/lvchange-raid.sh
+shell/lvchange-raid10.sh
+shell/lvchange-raid456.sh
+shell/lvchange-rebuild-raid.sh
+shell/lvconvert-cache-raid.sh
+shell/lvconvert-mirror-basic-0.sh
+shell/lvconvert-mirror-basic-1.sh
+shell/lvconvert-mirror-basic-2.sh
+shell/lvconvert-mirror-basic-3.sh
+shell/lvconvert-mirror.sh
+shell/lvconvert-raid-reshape-load.sh
+shell/lvconvert-raid-reshape-stripes-load-fail.sh
+shell/lvconvert-raid-reshape-stripes-load-reload.sh
+shell/lvconvert-raid-reshape.sh
+shell/lvconvert-raid-takeover.sh
+shell/lvconvert-raid.sh
+shell/lvconvert-raid1.sh
+shell/lvconvert-raid456.sh
+shell/lvconvert-repair-dmeventd.sh
+shell/lvconvert-repair-raid-dead-primary.sh
+shell/lvconvert-repair-raid.sh
+shell/lvconvert-repair-transient-majority-dmeventd.sh
+shell/lvcreate-cache.sh
+shell/lvcreate-raid-nosync.sh
+shell/lvcreate-raid.sh
+shell/lvcreate-thin.sh
+shell/lvextend-caches-on-thindata.sh
+shell/lvextend-raid-nosync.sh
+shell/lvextend-snapshot-dmeventd.sh
+shell/lvextend-thin-metadata-dmeventd.sh
+shell/lvextend-vdo-dmeventd.sh
+shell/lvresize-fs-crypt.sh
+shell/metadata-full.sh
+shell/mirror-vgreduce-removemissing.sh
+shell/name-mangling.sh
+shell/process-each-lv.sh
+shell/pvck-dump.sh
+shell/pvmove-basic.sh
+shell/pvmove-cache-segtypes.sh
+shell/pvmove-inactive.sh
+shell/pvmove-raid-segtypes.sh
+shell/pvmove-resume-1.sh
+shell/pvmove-thin-segtypes.sh
+shell/snapshot-merge-stack.sh
+shell/snapshot-merge-thin.sh
+shell/snapshot-raid.sh
+shell/thin-autoumount-dmeventd.sh
+shell/thin-dmeventd-warns.sh
+shell/thin-foreign-dmeventd.sh
+shell/thin-many-dmeventd.sh
+shell/vdo-autoumount-dmeventd.sh
+shell/vgchange-many.sh
+shell/vgsplit-operation.sh
+shell/vgsplit-raid.sh
+shell/writecache-cache-blocksize-2.sh
+shell/writecache-cache-blocksize.sh
+shell/writecache-large.sh
+shell/writecache-split.sh
+shell/writecache.sh
+
+
