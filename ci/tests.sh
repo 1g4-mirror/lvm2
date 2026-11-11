@@ -3,13 +3,13 @@
 # Usage:
 # # ci/tests.sh . < test/results/list
 
-FILTER_FILE="$(dirname "$0")/ONLY"
+FILTER_FILE="${FILTER_FILE:-"$(dirname "$0")/ONLY"}"
 if [[ ! -f "$FILTER_FILE" ]]; then
 	echo "ERROR: Filter file '$FILTER_FILE' not found" >&2
 	exit 2
 fi
 
-SKIP_FILE="$(dirname "$0")/SKIP"
+SKIP_FILE="${SKIP_FILE:-"$(dirname "$0")/SKIP"}"
 if [[ ! -f "$SKIP_FILE" ]]; then
 	echo "ERROR: Skip file '$SKIP_FILE' not found" >&2
 	exit 2
